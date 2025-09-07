@@ -1,8 +1,9 @@
 package database
 
 import (
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Supplier struct {
@@ -16,7 +17,7 @@ type Supplier struct {
 	Description      string              `bson:"description" json:"description"`
 	OfficeAddress    []SystemAddress     `bson:"officeAddress" json:"officeAddress"`
 	WarehouseAddress []SystemAddress     `bson:"warehouseAddress" json:"warehouseAddress"`
-	Company          primitive.ObjectID  `bson:"company" json:"company"`
+	Company          *primitive.ObjectID `bson:"company" json:"company"`
 	CreatedAt        time.Time           `bson:"createdAt" json:"createdAt"`
 	CreatedBy        primitive.ObjectID  `bson:"createdBy" json:"createdBy"`
 	UpdatedAt        time.Time           `bson:"updatedAt" json:"updatedAt"`

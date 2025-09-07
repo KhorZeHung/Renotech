@@ -3,22 +3,29 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
+	"os"
+	"strings"
+	"time"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"os"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"renotech.com.my/internal/database"
 	"renotech.com.my/internal/enum"
 	"renotech.com.my/internal/model"
-	"strings"
-	"time"
+	"renotech.com.my/internal/utils"
 )
 
 func MediaCreate(input *database.Media, systemContext *model.SystemContext) (*database.Media, error) {
 	collection := systemContext.MongoDB.Collection("media")
 
-	// set default field
+	// Set default fields and normalize path
 	input.CreatedAt = time.Now()
-	input.Path = strings.Replace(input.Path, "//", "/", -1)
+	input.Path = strings.ReplaceAll(input.Path, "\\", "/")
+	input.Path = strings.ReplaceAll(input.Path, "//", "/")
+	input.Type = mediaAssignType(input.Extension)
 
 	result, err := collection.InsertOne(context.Background(), input)
 
@@ -60,6 +67,191 @@ func MediaDelete(input primitive.ObjectID, systemContext *model.SystemContext) e
 		return err
 	}
 
+	return nil
+}
+
+func MediaList(input model.MediaListRequest) (*model.MediaListResponse, error) {
+	// Get MongoDB connection (unprotected endpoint, so no system context)
+	mongoDB := utils.MongoGet()
+	collection := mongoDB.Collection("media")
+
+	// Build base filter
+	filter := bson.M{}
+
+	// Add field-specific filters
+	if strings.TrimSpace(input.Name) != "" {
+		filter["name"] = primitive.Regex{Pattern: input.Name, Options: "i"}
+	}
+	if strings.TrimSpace(input.Type) != "" {
+		filter["type"] = input.Type
+	}
+	if strings.TrimSpace(input.Module) != "" {
+		filter["module"] = input.Module
+	}
+	if strings.TrimSpace(input.Extension) != "" {
+		filter["extension"] = input.Extension
+	}
+	if strings.TrimSpace(input.FileName) != "" {
+		filter["fileName"] = primitive.Regex{Pattern: input.FileName, Options: "i"}
+	}
+
+	// Add global search filter
+	if strings.TrimSpace(input.Search) != "" {
+		searchRegex := primitive.Regex{Pattern: input.Search, Options: "i"}
+		searchFilter := bson.M{
+			"$or": []bson.M{
+				{"name": searchRegex},
+				{"fileName": searchRegex},
+				{"module": searchRegex},
+			},
+		}
+
+		// Combine existing filter with search filter
+		if len(filter) > 0 {
+			filter = bson.M{
+				"$and": []bson.M{
+					filter,
+					searchFilter,
+				},
+			}
+		} else {
+			filter["$or"] = searchFilter["$or"]
+		}
+	}
+
+	return executeMediaList(collection, filter, input)
+}
+
+func MediaValidateAccess(filePath string, systemContext *model.SystemContext) error {
+	collection := systemContext.MongoDB.Collection("media")
+
+	// Normalize the path for comparison and remove ./ prefix if present
+	normalizedPath := strings.ReplaceAll(filePath, "\\", "/")
+	filePath = strings.TrimPrefix(filePath, "./")
+
+	// Find media record with matching path and user's company
+	filter := bson.M{
+		"path":    normalizedPath,
+		"company": *systemContext.User.Company,
+	}
+
+	var doc database.Media
+	err := collection.FindOne(context.Background(), filter).Decode(&doc)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeUnauthorized, "Media file not found or access denied", nil)
+	}
+
+	return nil
+}
+
+// Helper function for media list execution
+func executeMediaList(collection *mongo.Collection, filter bson.M, input model.MediaListRequest) (*model.MediaListResponse, error) {
+	// Get total count
+	total, err := collection.CountDocuments(context.Background(), filter)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to count media", nil)
+	}
+
+	// Set default pagination values
+	page := input.Page
+	if page <= 0 {
+		page = 1
+	}
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100 // Maximum limit
+	}
+
+	// Calculate pagination
+	skip := (page - 1) * limit
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	// Build sort options
+	sortOptions := input.Sort
+	if len(sortOptions) < 1 {
+		sortOptions = bson.M{"createdAt": -1} // Default to newest first
+	}
+
+	// Create find options
+	findOptions := options.Find().
+		SetSkip(int64(skip)).
+		SetLimit(int64(limit)).
+		SetSort(sortOptions)
+
+	// Execute query
+	cursor, err := collection.Find(context.Background(), filter, findOptions)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve media", nil)
+	}
+	defer cursor.Close(context.Background())
+
+	// Decode results
+	var media []bson.M
+	if err = cursor.All(context.Background(), &media); err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to decode media", nil)
+	}
+
+	response := &model.MediaListResponse{
+		Data:       media,
+		Page:       page,
+		Limit:      limit,
+		Total:      total,
+		TotalPages: totalPages,
+	}
+
+	return response, nil
+}
+
+// Media validation helper functions for other modules
+func ValidateMediaPath(path string, expectedModule string, systemContext *model.SystemContext) error {
+	if strings.TrimSpace(path) == "" {
+		return nil // Empty path is valid (optional field)
+	}
+
+	collection := systemContext.MongoDB.Collection("media")
+
+	// Normalize path for comparison and remove ./ prefix if present
+	normalizedPath := strings.ReplaceAll(path, "\\", "/")
+	normalizedPath = strings.TrimPrefix(normalizedPath, "./")
+
+	// Find media record with matching path, company, and module
+	filter := bson.M{
+		"path":    normalizedPath,
+		"company": *systemContext.User.Company,
+		"module":  expectedModule,
+	}
+
+	var doc database.Media
+	err := collection.FindOne(context.Background(), filter).Decode(&doc)
+	if err != nil {
+		return utils.SystemError(
+			enum.ErrorCodeValidation,
+			fmt.Sprintf("Media path not found or invalid for module '%s'", expectedModule),
+			map[string]interface{}{
+				"path":   path,
+				"module": expectedModule,
+			},
+		)
+	}
+
+	return nil
+}
+
+func ValidateMediaPaths(paths []string, expectedModule string, systemContext *model.SystemContext) error {
+	for i, path := range paths {
+		if err := ValidateMediaPath(path, expectedModule, systemContext); err != nil {
+			// Add index information for array validation
+			if appErr, ok := err.(*model.AppError); ok {
+				if details, ok := appErr.Details.(map[string]interface{}); ok {
+					details["index"] = i
+				}
+			}
+			return err
+		}
+	}
 	return nil
 }
 

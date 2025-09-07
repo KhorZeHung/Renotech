@@ -4,10 +4,21 @@ type MaterialType string
 type MediaType string
 type MaterialStatus string
 type DiscountType string
+type UserType string
+type ErrorCode string
 
 const (
-	MaterialTypeProduct MaterialType = "product"
-	MaterialTypeService MaterialType = "service"
+	ErrorCodeValidation   ErrorCode = "VALIDATION_ERROR"
+	ErrorCodeNotFound     ErrorCode = "NOT_FOUND"
+	ErrorCodeUnauthorized ErrorCode = "UNAUTHORIZED"
+	ErrorCodeInternal     ErrorCode = "INTERNAL_ERROR"
+	ErrorCodeBadRequest   ErrorCode = "BAD_REQUEST"
+	ErrorCodeTooLarge     ErrorCode = "FILE_TOO_LARGE"
+)
+const (
+	MaterialTypeProduct  MaterialType = "product"
+	MaterialTypeService  MaterialType = "service"
+	MaterialTypeTemplate MaterialType = "template"
 )
 
 const (
@@ -27,4 +38,9 @@ const (
 const (
 	DiscountTypeRate   DiscountType = "rate"
 	DiscountTypeAmount DiscountType = "amount"
+)
+
+const (
+	UserTypeTenant      UserType = "tenant"
+	UserTypeSystemAdmin UserType = "system_admin"
 )

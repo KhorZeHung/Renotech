@@ -1,15 +1,15 @@
 package database
 
 import (
+	"time"
+
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"renotech.com.my/internal/enum"
-	"time"
 )
 
 type SystemMedia struct {
-	Path        string         `bson:"path" json:"path"`
-	Description string         `bson:"description" json:"description"`
-	Type        enum.MediaType `bson:"type" json:"type"`
+	Path        string `bson:"path" json:"path"`
+	Description string `bson:"description" json:"description"`
 }
 
 type SystemAddress struct {
@@ -21,7 +21,7 @@ type SystemAddress struct {
 type SystemArea struct {
 	Name        string  `bson:"name" json:"name"`
 	Description string  `bson:"description" json:"description"`
-	Type        string  `bson:"type" json:"type"`
+	Unit        string  `bson:"unit" json:"unit"`
 	Length      float64 `bson:"length" json:"length"`
 	Width       float64 `bson:"width" json:"width"`
 	Height      float64 `bson:"height" json:"height"`
@@ -31,7 +31,6 @@ type SystemAreaMaterial struct {
 	Area      SystemArea                 `bson:"area" json:"area"`
 	Materials []SystemAreaMaterialDetail `bson:"materials" json:"materials"`
 	Status    string                     `bson:"status" json:"status"`
-	Index     int                        `bson:"index" json:"index"`
 }
 
 type SystemAreaMaterialDetail struct {
@@ -47,12 +46,10 @@ type SystemAreaMaterialDetail struct {
 	TotalCost    float64             `bson:"totalCost" json:"totalCost"`
 	TotalPrice   float64             `bson:"totalPrice" json:"totalPrice"`
 	Remark       string              `bson:"remark" json:"remark"`
-	Status       enum.MaterialStatus `bson:"status" json:"status"`
 }
 
 type SystemDiscount struct {
-	Amount      float64           `bson:"amount" json:"amount"`
-	Rate        float64           `bson:"rate" json:"rate"`
+	Value       float64           `bson:"value" json:"value"`
 	Type        enum.DiscountType `bson:"type" json:"type"`
 	Description string            `bson:"description" json:"description"`
 }

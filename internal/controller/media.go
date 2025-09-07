@@ -2,57 +2,111 @@ package controller
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
-	"os"
-	"path/filepath"
 	"renotech.com.my/internal/database"
+	"renotech.com.my/internal/enum"
+	"renotech.com.my/internal/middleware"
+	"renotech.com.my/internal/model"
 	"renotech.com.my/internal/service"
 	"renotech.com.my/internal/utils"
-	"strings"
-	"time"
 )
 
 func mediaFileUploadHandler(c *gin.Context) {
-	_, err := c.FormFile("file")
-
-	systemContext := utils.SystemContextBaseInit()
-	systemContext.Logger.Info("mediaFileUploadHandler", zap.Any("message", "start"))
-	defer systemContext.Logger.Info("mediaFileUploadHandler", zap.Any("message", "end"))
-
-	if err != nil {
-		utils.SendErrorResponse(c, err.Error())
-		return
-	}
+	systemContext := utils.GetSystemContextFromGin(c)
+	systemContext.Logger.Info("File upload started", zap.String("endpoint", "/api/v1/media/upload"))
+	defer systemContext.Logger.Info("File upload completed")
 
 	// Get the uploaded file from the form data
-	file, fileErr := c.FormFile("file") // "file" is the name of the input field in the HTML form
-	if fileErr != nil {
-		utils.SendErrorResponse(c, fileErr.Error())
-		return
-	}
-
-	if file.Size > 50*1024*1024 {
-		utils.SendErrorResponse(c, "file too large")
-		return
-	}
-
-	// Check if the logs directory exists, and create it if it doesn't
-	err = os.MkdirAll("./assets/client", os.ModePerm)
-
+	file, err := c.FormFile("file")
 	if err != nil {
-		fmt.Println(err.Error())
-		zap.L().Fatal("Failed to create logs directory", zap.Error(err))
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"No file provided or invalid file",
+			nil,
+		))
+		return
 	}
 
-	fileName := fmt.Sprintf("%v_%v", time.Now().UnixMilli(), file.Filename)
+	// Get module from form data (required)
+	module := c.PostForm("module")
+	if strings.TrimSpace(module) == "" {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Module is required",
+			nil,
+		))
+		return
+	}
 
-	filePath := filepath.Join("assets/client", fileName)
+	// Validate file type
+	if !middleware.IsFileTypeAllowed(file.Filename) {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"File type not allowed",
+			map[string]interface{}{"filename": file.Filename},
+		))
+		return
+	}
+
+	// Check file size against configured limit
+	maxSize := int64(utils.GetEnvInt("MAX_FILE_SIZE", 5242880)) // 5MB default
+	if file.Size > maxSize {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeTooLarge,
+			fmt.Sprintf("File size (%d bytes) exceeds maximum allowed size (%d bytes)", file.Size, maxSize),
+			nil,
+		))
+		return
+	}
+
+	// Check if upload directory exists, create with proper permissions
+	uploadDir := utils.GetEnvString("UPLOAD_DIR", "./assets/client")
+	err = os.MkdirAll(uploadDir, 0755) // More restrictive permissions
+	if err != nil {
+		systemContext.Logger.Error("Failed to create upload directory", zap.Error(err))
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeInternal,
+			"Failed to prepare upload directory",
+			nil,
+		))
+		return
+	}
+
+	// Generate secure filename
+	fileName := fmt.Sprintf("%d_%s", time.Now().UnixMilli(), utils.SanitizeFilename(file.Filename))
+	filePath := filepath.Join(uploadDir, fileName)
+	// Convert backslashes to forward slashes for cross-platform compatibility
+	filePath = strings.ReplaceAll(filePath, "\\", "/")
+
+	// Remove ./ prefix for database storage
+	filePath = strings.TrimPrefix(filePath, "./")
+
+	// Validate the final path for security
+	if !middleware.ValidateFilePath(filePath) {
+		systemContext.Logger.Error("Invalid file path detected", zap.String("path", filePath))
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid file path",
+			nil,
+		))
+		return
+	}
 
 	// Save the file to the defined path
 	if err = c.SaveUploadedFile(file, filePath); err != nil {
-		utils.SendErrorResponse(c, "failed to save file")
+		systemContext.Logger.Error("Failed to save uploaded file", zap.Error(err))
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeInternal,
+			"Failed to save file",
+			nil,
+		))
 		return
 	}
 
@@ -61,107 +115,191 @@ func mediaFileUploadHandler(c *gin.Context) {
 		Extension: filepath.Ext(file.Filename),
 		Path:      filePath,
 		FileName:  file.Filename,
+		Module:    module,
+		Company:   *systemContext.User.Company,
+		CreatedBy: *systemContext.User.ID,
 	}
 
 	result, createErr := service.MediaCreate(&input, systemContext)
-
 	if createErr != nil {
-		utils.SendErrorResponse(c, createErr.Error())
+		systemContext.Logger.Error("Failed to create media record", zap.Error(createErr))
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeInternal,
+			"Failed to create media record",
+			nil,
+		))
 		return
 	}
 
-	// Send response with paths of uploaded files
+	systemContext.Logger.Info("File uploaded successfully",
+		zap.String("filename", fileName),
+		zap.String("originalName", file.Filename),
+		zap.Int64("size", file.Size),
+	)
+
+	// Send response with uploaded file info
 	utils.SendSuccessResponse(c, result)
 }
 func mediaDeleteHandler(c *gin.Context) {
-	systemContext := utils.SystemContextBaseInit()
-	systemContext.Logger.Info("mediaDeleteHandler", zap.Any("message", "start"))
-
-	defer systemContext.Logger.Info("mediaDeleteHandler", zap.Any("message", "end"))
+	systemContext := utils.GetSystemContextFromGin(c)
+	systemContext.Logger.Info("Media deletion started", zap.String("endpoint", "/api/v1/media/delete"))
+	defer systemContext.Logger.Info("Media deletion completed")
 
 	input := c.Param("id")
-
-	id, ok := primitive.ObjectIDFromHex(input)
-
-	if ok != nil {
-		utils.SendErrorResponse(c, "invalid id")
-	}
-
-	err := service.MediaDelete(id, systemContext)
-
-	if err != nil {
-		utils.SendErrorResponse(c, err.Error())
+	if input == "" {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Media ID is required",
+			nil,
+		))
 		return
 	}
 
-	utils.SendSuccessResponse(c, "success")
+	id, err := primitive.ObjectIDFromHex(input)
+	if err != nil {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid media ID format",
+			map[string]interface{}{"id": input},
+		))
+		return
+	}
+
+	err = service.MediaDelete(id, systemContext)
+	if err != nil {
+		systemContext.Logger.Error("Failed to delete media", zap.Error(err), zap.String("mediaId", id.Hex()))
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeInternal,
+			"Failed to delete media",
+			nil,
+		))
+		return
+	}
+
+	systemContext.Logger.Info("Media deleted successfully", zap.String("mediaId", id.Hex()))
+	utils.SendSuccessMessageResponse(c, "Media deleted successfully")
 }
+
+func mediaListHandler(c *gin.Context) {
+	var input model.MediaListRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid request data",
+			map[string]interface{}{"details": err.Error()},
+		))
+		return
+	}
+
+	result, err := service.MediaList(input)
+	if err != nil {
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	utils.SendSuccessResponse(c, result)
+}
+
 func mediaFileFileServerHandler(c *gin.Context) {
+	systemContext := utils.GetSystemContextFromGin(c)
+
 	// Get the requested file path from the URL
-	filePath := c.Param("filePath") // filePath will match everything after /assets/
+	filePath := c.Param("filePath")
+	if filePath == "" {
+		c.JSON(404, gin.H{"error": "File path is required"})
+		return
+	}
+
+	// Validate the file path for security
+	if !middleware.ValidateFilePath(filePath) {
+		c.JSON(400, gin.H{"error": "Invalid file path"})
+		return
+	}
+
 	ext := strings.ToLower(filepath.Ext(filePath))
 
-	// Serve files from the ./assets directory
-	fullPath := "./assets/" + filePath
+	fullPath := filepath.Join("./assets", filePath)
+
+	// Normalize path separators
+	fullPath = strings.ReplaceAll(fullPath, "\\", "/")
+	// Check if file exists and is within assets directory
+	cleanPath := filepath.Clean(fullPath)
+	cleanPath = strings.ReplaceAll(cleanPath, "\\", "/")
+	if !strings.HasPrefix(cleanPath, "./assets") && !strings.HasPrefix(cleanPath, "assets") {
+		c.JSON(400, gin.H{"error": "Access denied"})
+		return
+	}
+
+	// Validate company ownership of the media file
+	if err := service.MediaValidateAccess(fullPath, systemContext); err != nil {
+		c.JSON(403, gin.H{"error": "Access denied - file not found or unauthorized"})
+		return
+	}
 
 	// Set Content-Type header based on file extension
 	switch ext {
 	case ".png":
 		c.Header("Content-Type", "image/png")
-		break
 	case ".jpg", ".jpeg":
 		c.Header("Content-Type", "image/jpeg")
-		break
 	case ".gif":
 		c.Header("Content-Type", "image/gif")
-		break
 	case ".svg":
 		c.Header("Content-Type", "image/svg+xml") // SVG format
-		break
 	case ".mp4":
 		c.Header("Content-Type", "video/mp4")
-		break
 	case ".webm":
 		c.Header("Content-Type", "video/webm")
-		break
 	case ".avi":
 		c.Header("Content-Type", "video/x-msvideo")
-		break
 	case ".pdf":
 		c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
 		c.Header("Content-Type", "application/pdf")
-		break
 	case ".doc", ".docx":
 		c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-		break
 	case ".xls", ".xlsx":
 		c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		break
 	case ".json":
 		c.Header("Content-Type", "application/json") // JSON format
-		break
 	case ".html":
 		c.Header("Content-Type", "text/html; charset=utf-8") // HTML format
-		break
 	case ".css":
 		c.Header("Content-Type", "text/css") // CSS format
-		break
 	case ".js":
 		c.Header("Content-Type", "application/javascript") // JavaScript format
 	default:
 		c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
 		c.Header("Content-Type", "application/octet-stream")
-		break
 	}
 
-	// Serve the file if it exists
+	// Check if file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		c.JSON(404, gin.H{"error": "File not found"})
+		return
+	}
+
+	// Serve the file
 	c.File(fullPath)
 }
 
 func MediaAPIInit(r *gin.Engine) {
-	r.POST("/api/v1/media/upload", mediaFileUploadHandler)
-	r.DELETE("/api/v1/media/delete/:id", mediaDeleteHandler)
-	r.GET("/assets/*filePath", mediaFileFileServerHandler)
+	// Protected endpoints (require JWT auth)
+	protectedGroup := r.Group("/api/v1/media")
+	protectedGroup.Use(middleware.JWTAuthMiddleware())
+	{
+		protectedGroup.POST("/upload", mediaFileUploadHandler)
+		protectedGroup.DELETE("/delete/:id", mediaDeleteHandler)
+	}
+
+	// Unprotected endpoints
+	r.POST("/api/v1/media/list", mediaListHandler)
+
+	// Secured file serving endpoint
+	assetsGroup := r.Group("/assets")
+	assetsGroup.Use(middleware.JWTAuthMiddleware())
+	{
+		assetsGroup.GET("/*filePath", mediaFileFileServerHandler)
+	}
 }
