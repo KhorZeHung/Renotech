@@ -35,8 +35,8 @@ func userCreateHandler(c *gin.Context) {
 	}
 
 	ctx.Logger.Info("User creation successful",
-		zap.String("userID", result.ID.Hex()),
-		zap.String("username", result.Username),
+		zap.String("userID", result.User.ID.Hex()),
+		zap.String("username", result.User.Username),
 	)
 
 	utils.SendSuccessResponse(c, result)

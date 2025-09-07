@@ -60,7 +60,7 @@ func userCreateValidation(input *database.User, systemContext *model.SystemConte
 	return nil
 }
 
-func UserTenantCreate(input *database.User, systemContext *model.SystemContext) (*database.User, error) {
+func UserTenantCreate(input *database.User, systemContext *model.SystemContext) (*model.UserCreateResponse, error) {
 	// Validate input
 	if err := userCreateValidation(input, systemContext); err != nil {
 		return nil, err
@@ -105,7 +105,24 @@ func UserTenantCreate(input *database.User, systemContext *model.SystemContext) 
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve user", nil)
 	}
 
-	return &doc, nil
+	// login to user
+	loginInput := model.LoginRequest{
+		Email:    input.Email,
+		Password: input.Password,
+	}
+
+	token, respErr := AuthLogin(&loginInput, systemContext)
+
+	if respErr != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to login user", nil)
+	}
+
+	response := model.UserCreateResponse{
+		Token: token.Token,
+		User:  doc,
+	}
+
+	return &response, nil
 }
 
 func userUpdateValidation(input *database.User, systemContext *model.SystemContext) error {

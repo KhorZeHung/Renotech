@@ -138,6 +138,7 @@ func setupRoutes(router *gin.Engine) {
 	router.GET("/health", healthCheckHandler)
 
 	// API routes
+	controller.SystemAPIInit(router)
 	controller.AuthAPIInit(router)
 	controller.MediaAPIInit(router)
 	controller.QuotationTemplateAPIInit(router)

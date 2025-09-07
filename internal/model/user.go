@@ -44,7 +44,7 @@ type UserLoginModal struct {
 }
 
 // User service structs
-type AuthResponse struct {
+type UserCreateResponse struct {
 	Token string        `json:"token"`
 	User  database.User `json:"user"`
 }
