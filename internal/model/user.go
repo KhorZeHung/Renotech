@@ -70,3 +70,23 @@ type UserListResponse struct {
 	Total      int64    `json:"total"`
 	TotalPages int      `json:"totalPages"`
 }
+
+// Password reset request/response models
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ForgotPasswordResponse struct {
+	Message string `json:"message"`
+}
+
+type ResetPasswordRequest struct {
+	Email           string `json:"email" binding:"required,email"`
+	Token           string `json:"token" binding:"required"`
+	NewPassword     string `json:"newPassword" binding:"required,min=8"`
+	ConfirmPassword string `json:"confirmPassword" binding:"required"`
+}
+
+type ResetPasswordResponse struct {
+	Message string `json:"message"`
+}

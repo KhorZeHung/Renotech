@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"math"
 	"strings"
 	"time"
@@ -26,6 +28,28 @@ func userCreateValidation(input *database.User, systemContext *model.SystemConte
 		return err
 	}
 
+	// Check for email uniqueness across the entire system (for enabled, non-deleted users)
+	emailFilter := bson.M{
+		"email":     input.Email,
+		"isDeleted": false,
+		"isEnabled": true,
+	}
+
+	emailCount, err := collection.CountDocuments(context.Background(), emailFilter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to check email uniqueness", nil)
+	}
+
+	if emailCount > 0 {
+		return utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Email already exists in the system",
+			map[string]interface{}{
+				"email": input.Email,
+			},
+		)
+	}
+
 	// Check for duplicates within company (only for enabled, non-deleted users)
 	if input.Company != nil {
 		filter := bson.M{
@@ -34,7 +58,6 @@ func userCreateValidation(input *database.User, systemContext *model.SystemConte
 			"isEnabled": true,
 			"$or": []bson.M{
 				{"username": input.Username},
-				{"email": input.Email},
 				{"contact": input.Contact},
 			},
 		}
@@ -47,10 +70,9 @@ func userCreateValidation(input *database.User, systemContext *model.SystemConte
 		if count > 0 {
 			return utils.SystemError(
 				enum.ErrorCodeValidation,
-				"Username, email, or contact already exists in this company",
+				"Username or contact already exists in this company",
 				map[string]interface{}{
 					"username": input.Username,
-					"email":    input.Email,
 					"contact":  input.Contact,
 				},
 			)
@@ -127,6 +149,29 @@ func userUpdateValidation(input *database.User, systemContext *model.SystemConte
 		return utils.SystemError(enum.ErrorCodeNotFound, "User not found", nil)
 	}
 
+	// Check for email uniqueness across the entire system (excluding current user)
+	emailFilter := bson.M{
+		"email":     input.Email,
+		"isDeleted": false,
+		"isEnabled": true,
+		"_id":       bson.M{"$ne": input.ID}, // Exclude current user
+	}
+
+	emailCount, err := collection.CountDocuments(context.Background(), emailFilter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to check email uniqueness", nil)
+	}
+
+	if emailCount > 0 {
+		return utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Email already exists in the system",
+			map[string]interface{}{
+				"email": input.Email,
+			},
+		)
+	}
+
 	// Check for duplicates within company (excluding current user)
 	if currentUser.Company != nil {
 		filter := bson.M{
@@ -136,7 +181,6 @@ func userUpdateValidation(input *database.User, systemContext *model.SystemConte
 			"_id":       bson.M{"$ne": input.ID}, // Exclude current user
 			"$or": []bson.M{
 				{"username": input.Username},
-				{"email": input.Email},
 				{"contact": input.Contact},
 			},
 		}
@@ -149,10 +193,9 @@ func userUpdateValidation(input *database.User, systemContext *model.SystemConte
 		if count > 0 {
 			return utils.SystemError(
 				enum.ErrorCodeValidation,
-				"Username, email, or contact already exists in this company",
+				"Username or contact already exists in this company",
 				map[string]interface{}{
 					"username": input.Username,
-					"email":    input.Email,
 					"contact":  input.Contact,
 				},
 			)
@@ -286,6 +329,28 @@ func userAdminCreateValidation(input *database.User, systemContext *model.System
 		return err
 	}
 
+	// Check for email uniqueness across the entire system (for enabled, non-deleted users)
+	emailFilter := bson.M{
+		"email":     input.Email,
+		"isDeleted": false,
+		"isEnabled": true,
+	}
+
+	emailCount, err := collection.CountDocuments(context.Background(), emailFilter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to check email uniqueness", nil)
+	}
+
+	if emailCount > 0 {
+		return utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Email already exists in the system",
+			map[string]interface{}{
+				"email": input.Email,
+			},
+		)
+	}
+
 	// Check for duplicates within company (only for enabled, non-deleted users)
 	if input.Company != nil {
 		filter := bson.M{
@@ -294,7 +359,6 @@ func userAdminCreateValidation(input *database.User, systemContext *model.System
 			"isEnabled": true,
 			"$or": []bson.M{
 				{"username": input.Username},
-				{"email": input.Email},
 				{"contact": input.Contact},
 			},
 		}
@@ -307,10 +371,9 @@ func userAdminCreateValidation(input *database.User, systemContext *model.System
 		if count > 0 {
 			return utils.SystemError(
 				enum.ErrorCodeValidation,
-				"Username, email, or contact already exists in this company",
+				"Username or contact already exists in this company",
 				map[string]interface{}{
 					"username": input.Username,
-					"email":    input.Email,
 					"contact":  input.Contact,
 				},
 			)
@@ -383,6 +446,29 @@ func userAdminUpdateValidation(input *database.User, systemContext *model.System
 		return utils.SystemError(enum.ErrorCodeNotFound, "user not found", nil)
 	}
 
+	// Check for email uniqueness across the entire system (excluding current user)
+	emailFilter := bson.M{
+		"email":     input.Email,
+		"isDeleted": false,
+		"isEnabled": true,
+		"_id":       bson.M{"$ne": input.ID}, // Exclude current user
+	}
+
+	emailCount, err := collection.CountDocuments(context.Background(), emailFilter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to check email uniqueness", nil)
+	}
+
+	if emailCount > 0 {
+		return utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Email already exists in the system",
+			map[string]interface{}{
+				"email": input.Email,
+			},
+		)
+	}
+
 	// Check for duplicates within company (excluding current user)
 	filter = bson.M{
 		"type":      enum.UserTypeSystemAdmin,
@@ -391,7 +477,6 @@ func userAdminUpdateValidation(input *database.User, systemContext *model.System
 		"_id":       bson.M{"$ne": input.ID}, // Exclude current user
 		"$or": []bson.M{
 			{"username": input.Username},
-			{"email": input.Email},
 			{"contact": input.Contact},
 		},
 	}
@@ -404,10 +489,9 @@ func userAdminUpdateValidation(input *database.User, systemContext *model.System
 	if count > 0 {
 		return utils.SystemError(
 			enum.ErrorCodeValidation,
-			"Username, email, or contact already exists in this company",
+			"Username or contact already exists in this company",
 			map[string]interface{}{
 				"username": input.Username,
-				"email":    input.Email,
 				"contact":  input.Contact,
 			},
 		)
@@ -625,4 +709,137 @@ func executeUserList(collection *mongo.Collection, filter bson.M, input model.Us
 	}
 
 	return response, nil
+}
+
+// Password reset services
+func userForgotPasswordValidation(input *model.ForgotPasswordRequest, systemContext *model.SystemContext) (*database.User, error) {
+	collection := systemContext.MongoDB.Collection("user")
+
+	// Find user by email
+	filter := bson.M{
+		"email":     input.Email,
+		"isDeleted": false,
+		"isEnabled": true,
+	}
+
+	var user database.User
+	err := collection.FindOne(context.Background(), filter).Decode(&user)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Email not found in the system", nil)
+	}
+
+	return &user, nil
+}
+
+func UserForgotPassword(input *model.ForgotPasswordRequest, systemContext *model.SystemContext) (*model.ForgotPasswordResponse, error) {
+	// Validate email and find user
+	user, err := userForgotPasswordValidation(input, systemContext)
+	if err != nil {
+		return nil, err
+	}
+
+	collection := systemContext.MongoDB.Collection("user")
+
+	// Generate secure random token
+	tokenBytes := make([]byte, 32)
+	_, err = rand.Read(tokenBytes)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to generate reset token", nil)
+	}
+	resetToken := hex.EncodeToString(tokenBytes)
+
+	// Set token expiry to 24 hours from now
+	tokenExpiry := time.Now().Add(24 * time.Hour)
+
+	// Update user with reset token
+	update := bson.M{
+		"$set": bson.M{
+			"resetToken":       resetToken,
+			"resetTokenExpiry": tokenExpiry,
+			"updatedAt":        time.Now(),
+		},
+	}
+
+	_, err = collection.UpdateOne(context.Background(), bson.M{"_id": user.ID}, update)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to save reset token", nil)
+	}
+
+	// Send reset email
+	err = utils.SendPasswordResetEmail(user.Email, resetToken)
+	if err != nil {
+		systemContext.Logger.Error("Failed to send password reset email", zap.Error(err), zap.String("email", user.Email))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to send reset email", nil)
+	}
+
+	systemContext.Logger.Info("Password reset email sent", zap.String("email", user.Email))
+
+	return &model.ForgotPasswordResponse{
+		Message: "Password reset email has been sent to your email address",
+	}, nil
+}
+
+func userResetPasswordValidation(input *model.ResetPasswordRequest, systemContext *model.SystemContext) (*database.User, error) {
+	collection := systemContext.MongoDB.Collection("user")
+
+	// Check if passwords match
+	if input.NewPassword != input.ConfirmPassword {
+		return nil, utils.SystemError(enum.ErrorCodeValidation, "Passwords do not match", nil)
+	}
+
+	// Find user by email and reset token
+	filter := bson.M{
+		"email":            input.Email,
+		"resetToken":       input.Token,
+		"resetTokenExpiry": bson.M{"$gt": time.Now()}, // Token not expired
+		"isDeleted":        false,
+		"isEnabled":        true,
+	}
+
+	var user database.User
+	err := collection.FindOne(context.Background(), filter).Decode(&user)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeUnauthorized, "Invalid or expired reset token", nil)
+	}
+
+	return &user, nil
+}
+
+func UserResetPassword(input *model.ResetPasswordRequest, systemContext *model.SystemContext) (*model.ResetPasswordResponse, error) {
+	// Validate token and find user
+	user, err := userResetPasswordValidation(input, systemContext)
+	if err != nil {
+		return nil, err
+	}
+
+	collection := systemContext.MongoDB.Collection("user")
+
+	// Hash new password
+	hashedPassword, err := utils.HashPassword(input.NewPassword)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to hash password", nil)
+	}
+
+	// Update user password and clear reset token
+	update := bson.M{
+		"$set": bson.M{
+			"password":  hashedPassword,
+			"updatedAt": time.Now(),
+		},
+		"$unset": bson.M{
+			"resetToken":       "",
+			"resetTokenExpiry": "",
+		},
+	}
+
+	_, err = collection.UpdateOne(context.Background(), bson.M{"_id": user.ID}, update)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to update password", nil)
+	}
+
+	systemContext.Logger.Info("Password reset successfully", zap.String("email", user.Email))
+
+	return &model.ResetPasswordResponse{
+		Message: "Password has been reset successfully",
+	}, nil
 }
