@@ -47,6 +47,14 @@ func companyTenantCreateValidation(input *database.Company, systemContext *model
 		}
 	}
 
+	if len(input.ClientDisplayName) < 1 {
+		input.ClientDisplayName = input.Name
+	}
+
+	if len(input.SupplierDisplayName) < 1 {
+		input.SupplierDisplayName = input.Name
+	}
+
 	// Create company object with default values
 	input.Owner = systemContext.User.ID
 	input.IsDeleted = false

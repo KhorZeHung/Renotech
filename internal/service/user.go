@@ -82,7 +82,7 @@ func UserTenantCreate(input *database.User, systemContext *model.SystemContext) 
 		Contact:        input.Contact,
 		Company:        input.Company,
 		ProfilePicture: input.ProfilePicture,
-		Permissions:    []string{}, // Default empty permissions
+		Permissions:    []string{}, 
 		Type:           enum.UserTypeTenant,
 		Comment:        input.Comment,
 		IsDeleted:      false,
