@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"math"
 	"strings"
 	"time"
@@ -319,6 +317,7 @@ func UserTenantList(input model.UserListRequest, systemContext *model.SystemCont
 
 	return executeUserList(collection, filter, input, systemContext)
 }
+
 
 // Admin services
 func userAdminCreateValidation(input *database.User, systemContext *model.SystemContext) error {
@@ -711,13 +710,17 @@ func executeUserList(collection *mongo.Collection, filter bson.M, input model.Us
 	return response, nil
 }
 
-// Password reset services
-func userForgotPasswordValidation(input *model.ForgotPasswordRequest, systemContext *model.SystemContext) (*database.User, error) {
+func userChangePasswordValidation(input *model.ChangePasswordRequest, userID primitive.ObjectID, systemContext *model.SystemContext) (*database.User, error) {
 	collection := systemContext.MongoDB.Collection("user")
 
-	// Find user by email
+	// Check if passwords match
+	if input.NewPassword != input.ConfirmPassword {
+		return nil, utils.SystemError(enum.ErrorCodeValidation, "New passwords do not match", nil)
+	}
+
+	// Find user by ID
 	filter := bson.M{
-		"email":     input.Email,
+		"_id":       userID,
 		"isDeleted": false,
 		"isEnabled": true,
 	}
@@ -725,89 +728,20 @@ func userForgotPasswordValidation(input *model.ForgotPasswordRequest, systemCont
 	var user database.User
 	err := collection.FindOne(context.Background(), filter).Decode(&user)
 	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Email not found in the system", nil)
+		return nil, utils.SystemError(enum.ErrorCodeNotFound, "User not found", nil)
+	}
+
+	// Verify old password
+	if err := utils.VerifyPassword(user.Password, input.OldPassword); err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeValidation, "Current password is incorrect", nil)
 	}
 
 	return &user, nil
 }
 
-func UserForgotPassword(input *model.ForgotPasswordRequest, systemContext *model.SystemContext) (*model.ForgotPasswordResponse, error) {
-	// Validate email and find user
-	user, err := userForgotPasswordValidation(input, systemContext)
-	if err != nil {
-		return nil, err
-	}
-
-	collection := systemContext.MongoDB.Collection("user")
-
-	// Generate secure random token
-	tokenBytes := make([]byte, 32)
-	_, err = rand.Read(tokenBytes)
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to generate reset token", nil)
-	}
-	resetToken := hex.EncodeToString(tokenBytes)
-
-	// Set token expiry to 24 hours from now
-	tokenExpiry := time.Now().Add(24 * time.Hour)
-
-	// Update user with reset token
-	update := bson.M{
-		"$set": bson.M{
-			"resetToken":       resetToken,
-			"resetTokenExpiry": tokenExpiry,
-			"updatedAt":        time.Now(),
-		},
-	}
-
-	_, err = collection.UpdateOne(context.Background(), bson.M{"_id": user.ID}, update)
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to save reset token", nil)
-	}
-
-	// Send reset email
-	err = utils.SendPasswordResetEmail(user.Email, resetToken)
-	if err != nil {
-		systemContext.Logger.Error("Failed to send password reset email", zap.Error(err), zap.String("email", user.Email))
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to send reset email", nil)
-	}
-
-	systemContext.Logger.Info("Password reset email sent", zap.String("email", user.Email))
-
-	return &model.ForgotPasswordResponse{
-		Message: "Password reset email has been sent to your email address",
-	}, nil
-}
-
-func userResetPasswordValidation(input *model.ResetPasswordRequest, systemContext *model.SystemContext) (*database.User, error) {
-	collection := systemContext.MongoDB.Collection("user")
-
-	// Check if passwords match
-	if input.NewPassword != input.ConfirmPassword {
-		return nil, utils.SystemError(enum.ErrorCodeValidation, "Passwords do not match", nil)
-	}
-
-	// Find user by email and reset token
-	filter := bson.M{
-		"email":            input.Email,
-		"resetToken":       input.Token,
-		"resetTokenExpiry": bson.M{"$gt": time.Now()}, // Token not expired
-		"isDeleted":        false,
-		"isEnabled":        true,
-	}
-
-	var user database.User
-	err := collection.FindOne(context.Background(), filter).Decode(&user)
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeUnauthorized, "Invalid or expired reset token", nil)
-	}
-
-	return &user, nil
-}
-
-func UserResetPassword(input *model.ResetPasswordRequest, systemContext *model.SystemContext) (*model.ResetPasswordResponse, error) {
-	// Validate token and find user
-	user, err := userResetPasswordValidation(input, systemContext)
+func UserChangePassword(input *model.ChangePasswordRequest, userID primitive.ObjectID, systemContext *model.SystemContext) (*model.ChangePasswordResponse, error) {
+	// Validate input and find user
+	user, err := userChangePasswordValidation(input, userID, systemContext)
 	if err != nil {
 		return nil, err
 	}
@@ -820,15 +754,11 @@ func UserResetPassword(input *model.ResetPasswordRequest, systemContext *model.S
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to hash password", nil)
 	}
 
-	// Update user password and clear reset token
+	// Update user password
 	update := bson.M{
 		"$set": bson.M{
 			"password":  hashedPassword,
 			"updatedAt": time.Now(),
-		},
-		"$unset": bson.M{
-			"resetToken":       "",
-			"resetTokenExpiry": "",
 		},
 	}
 
@@ -837,9 +767,9 @@ func UserResetPassword(input *model.ResetPasswordRequest, systemContext *model.S
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to update password", nil)
 	}
 
-	systemContext.Logger.Info("Password reset successfully", zap.String("email", user.Email))
+	systemContext.Logger.Info("Password changed successfully", zap.String("userID", user.ID.Hex()))
 
-	return &model.ResetPasswordResponse{
-		Message: "Password has been reset successfully",
+	return &model.ChangePasswordResponse{
+		Message: "Password has been changed successfully",
 	}, nil
 }

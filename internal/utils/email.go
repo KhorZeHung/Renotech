@@ -28,11 +28,11 @@ type EmailData struct {
 
 func GetEmailConfig() *EmailConfig {
 	return &EmailConfig{
-		SMTPHost:     GetEnvString("SMTP_HOST", "localhost"),
+		SMTPHost:     GetEnvString("SMTP_HOST", "smtp.gmail.com"),
 		SMTPPort:     GetEnvInt("SMTP_PORT", 587),
-		SMTPUsername: GetEnvString("SMTP_USERNAME", ""),
-		SMTPPassword: GetEnvString("SMTP_PASSWORD", ""),
-		FromEmail:    GetEnvString("FROM_EMAIL", "noreply@renotech.com.my"),
+		SMTPUsername: GetEnvString("SMTP_USERNAME", "khorzehung@gmail.com"),
+		SMTPPassword: GetEnvString("SMTP_PASSWORD", "eqyu mium udby hvic"),
+		FromEmail:    GetEnvString("FROM_EMAIL", "khorzehung@gmai.com"),
 		FromName:     GetEnvString("FROM_NAME", "RenoTech"),
 	}
 }
@@ -90,36 +90,140 @@ func SendPasswordResetEmail(email, resetToken string) error {
     <meta charset="UTF-8">
     <title>Password Reset</title>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #f4f4f4; padding: 20px; text-align: center; }
-        .content { padding: 20px; background-color: #ffffff; }
-        .button { display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-        .footer { background-color: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666; }
-        .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 4px; margin: 15px 0; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            line-height: 1.6; 
+            color: #2c3e50; 
+            margin: 0; 
+            padding: 0; 
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(33, 150, 243, 0.1);
+        }
+        .header { 
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%); 
+            padding: 30px 20px; 
+            text-align: center; 
+            border-radius: 12px 12px 0 0;
+            margin: -20px -20px 0 -20px;
+        }
+        .header h1 {
+            color: #ffffff;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .content { 
+            padding: 30px 20px; 
+            background-color: #ffffff; 
+        }
+        .content h2 {
+            color: #1976d2;
+            margin-top: 0;
+            font-size: 24px;
+            font-weight: 500;
+        }
+        .content p {
+            color: #37474f;
+            font-size: 16px;
+            margin: 16px 0;
+        }
+        .button { 
+            display: inline-block; 
+            padding: 16px 32px; 
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%); 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 8px; 
+            margin: 24px 0; 
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 4px 16px rgba(33, 150, 243, 0.3);
+            transition: all 0.3s ease;
+        }
+        .button:hover {
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+            box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+        }
+        .link-box {
+            word-break: break-all; 
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); 
+            padding: 16px; 
+            border-radius: 8px; 
+            border: 2px solid #bbdefb;
+            margin: 16px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            color: #1565c0;
+        }
+        .footer { 
+            background: linear-gradient(135deg, #eceff1 0%, #cfd8dc 100%); 
+            padding: 20px; 
+            text-align: center; 
+            font-size: 12px; 
+            color: #607d8b; 
+            border-radius: 0 0 12px 12px;
+            margin: 0 -20px -20px -20px;
+        }
+        .warning { 
+            background: linear-gradient(135deg, #e1f5fe 0%, #b3e5fc 100%); 
+            border: 2px solid #29b6f6; 
+            padding: 16px; 
+            border-radius: 8px; 
+            margin: 20px 0; 
+            color: #0277bd;
+            font-weight: 500;
+        }
+        .warning strong {
+            color: #01579b;
+        }
+        .divider {
+            height: 2px;
+            background: linear-gradient(90deg, #e3f2fd 0%, #2196f3 50%, #e3f2fd 100%);
+            margin: 24px 0;
+            border: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>RenoTech - Password Reset</h1>
+            <h1>🔧 RenoTech - Password Reset</h1>
         </div>
         <div class="content">
-            <h2>Reset Your Password</h2>
-            <p>Hello,</p>
+            <h2>🔐 Reset Your Password</h2>
+            <p>Hello there! 👋</p>
             <p>We received a request to reset your password for your RenoTech account associated with this email address.</p>
+            
+            <hr class="divider">
+            
             <p>Click the button below to reset your password:</p>
-            <a href="{{.ResetLink}}" class="button">Reset Password</a>
+            <center>
+                <a href="{{.ResetLink}}" class="button">🔄 Reset Password</a>
+            </center>
+            
             <p>Or copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 4px;">{{.ResetLink}}</p>
+            <div class="link-box">{{.ResetLink}}</div>
+            
             <div class="warning">
-                <strong>Important:</strong> This link will expire in 24 hours for security reasons.
+                <strong>⚠️ Important:</strong> This link will expire in 5 minutes for security reasons.
             </div>
+            
+            <hr class="divider">
+            
             <p>If you didn't request this password reset, please ignore this email or contact support if you have concerns.</p>
-            <p>Best regards,<br>The RenoTech Team</p>
+            <p>Best regards,<br><strong>The RenoTech Team</strong> 🏗️</p>
         </div>
         <div class="footer">
-            <p>This is an automated message. Please do not reply to this email.</p>
+            <p>📧 This is an automated message. Please do not reply to this email.</p>
+            <p>© 2025 RenoTech. All rights reserved.</p>
         </div>
     </div>
 </body>

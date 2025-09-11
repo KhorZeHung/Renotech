@@ -90,3 +90,14 @@ type ResetPasswordRequest struct {
 type ResetPasswordResponse struct {
 	Message string `json:"message"`
 }
+
+// Change password request model (for authenticated users changing their password)
+type ChangePasswordRequest struct {
+	OldPassword     string `json:"oldPassword" binding:"required"`
+	NewPassword     string `json:"newPassword" binding:"required,min=8"`
+	ConfirmPassword string `json:"confirmPassword" binding:"required"`
+}
+
+type ChangePasswordResponse struct {
+	Message string `json:"message"`
+}

@@ -20,8 +20,6 @@ type User struct {
 	Comment          string              `bson:"comment" json:"comment"`
 	IsDeleted        bool                `bson:"isDeleted" json:"isDeleted"`
 	IsEnabled        bool                `bson:"isEnabled" json:"isEnabled"`
-	ResetToken       string              `bson:"resetToken,omitempty" json:"resetToken,omitempty"`
-	ResetTokenExpiry time.Time           `bson:"resetTokenExpiry,omitempty" json:"resetTokenExpiry,omitempty"`
 	CreatedAt        time.Time           `bson:"createdAt" json:"createdAt"`
 	CreatedBy        *primitive.ObjectID `bson:"createdBy,omitempty" json:"createdBy,omitempty"`
 	UpdatedAt        time.Time           `bson:"updatedAt" json:"updatedAt"`

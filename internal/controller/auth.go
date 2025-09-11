@@ -53,7 +53,7 @@ func forgotPasswordHandler(c *gin.Context) {
 		return
 	}
 
-	result, err := service.UserForgotPassword(&input, systemContext)
+	result, err := service.AuthForgotPassword(&input, systemContext)
 	if err != nil {
 		systemContext.Logger.Error("Forgot password failed", zap.Error(err))
 		utils.SendErrorResponse(c, err)
@@ -82,7 +82,7 @@ func resetPasswordHandler(c *gin.Context) {
 		return
 	}
 
-	result, err := service.UserResetPassword(&input, systemContext)
+	result, err := service.AuthResetPassword(&input, systemContext)
 	if err != nil {
 		systemContext.Logger.Error("Reset password failed", zap.Error(err))
 		utils.SendErrorResponse(c, err)
