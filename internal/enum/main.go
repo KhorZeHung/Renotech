@@ -6,6 +6,8 @@ type MaterialStatus string
 type DiscountType string
 type UserType string
 type ErrorCode string
+type OrderStatus string
+type OrderPriority string
 
 const (
 	ErrorCodeValidation   ErrorCode = "VALIDATION_ERROR"
@@ -43,4 +45,22 @@ const (
 const (
 	UserTypeTenant      UserType = "tenant"
 	UserTypeSystemAdmin UserType = "system_admin"
+)
+
+const (
+	OrderStatusDraft     OrderStatus = "draft"
+	OrderStatusPending   OrderStatus = "pending"
+	OrderStatusSent      OrderStatus = "sent"
+	OrderStatusConfirmed OrderStatus = "confirmed"
+	OrderStatusPartial   OrderStatus = "partial"
+	OrderStatusDelivered OrderStatus = "delivered"
+	OrderStatusCancelled OrderStatus = "cancelled"
+	OrderStatusRejected  OrderStatus = "rejected"
+)
+
+const (
+	OrderPriorityLow    OrderPriority = "low"
+	OrderPriorityMedium OrderPriority = "medium"
+	OrderPriorityHigh   OrderPriority = "high"
+	OrderPriorityUrgent OrderPriority = "urgent"
 )

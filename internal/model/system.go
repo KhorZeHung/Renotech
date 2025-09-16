@@ -32,3 +32,4 @@ type ResponseError struct {
 func (e *AppError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
+

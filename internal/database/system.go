@@ -37,18 +37,19 @@ type SystemAreaMaterial struct {
 }
 
 type SystemAreaMaterialDetail struct {
-	Material     *primitive.ObjectID `bson:"material" json:"material"`
-	Name         string              `bson:"name" json:"name"`
-	Type         enum.MaterialType   `bson:"type" json:"type"`
-	Supplier     *primitive.ObjectID `bson:"supplier" json:"supplier"`
-	Brand        string              `bson:"brand" json:"brand"`
-	Unit         string              `bson:"unit" json:"unit"`
-	CostPerUnit  float64             `bson:"costPerUnit" json:"costPerUnit"`
-	PricePerUnit float64             `bson:"pricePerUnit" json:"pricePerUnit"`
-	Quantity     float64             `bson:"quantity" json:"quantity"`
-	TotalCost    float64             `bson:"totalCost" json:"totalCost"`
-	TotalPrice   float64             `bson:"totalPrice" json:"totalPrice"`
-	Remark       string              `bson:"remark" json:"remark"`
+	Material     *primitive.ObjectID        `bson:"material" json:"material"`
+	Template     []SystemAreaMaterialDetail `bson:"template" json:"template"`
+	Name         string                     `bson:"name" json:"name"`
+	Type         enum.MaterialType          `bson:"type" json:"type"`
+	Supplier     *primitive.ObjectID        `bson:"supplier" json:"supplier"`
+	Brand        string                     `bson:"brand" json:"brand"`
+	Unit         string                     `bson:"unit" json:"unit"`
+	CostPerUnit  float64                    `bson:"costPerUnit" json:"costPerUnit"`
+	PricePerUnit float64                    `bson:"pricePerUnit" json:"pricePerUnit"`
+	Quantity     float64                    `bson:"quantity" json:"quantity"`
+	TotalCost    float64                    `bson:"totalCost" json:"totalCost"`
+	TotalPrice   float64                    `bson:"totalPrice" json:"totalPrice"`
+	Remark       string                     `bson:"remark" json:"remark"`
 }
 
 type SystemDiscount struct {
@@ -58,7 +59,6 @@ type SystemDiscount struct {
 }
 
 type SystemActionLog struct {
-	Name        string              `bson:"name" json:"name"`
 	Description string              `bson:"description" json:"description"`
 	Time        time.Time           `bson:"time" json:"time"`
 	ByName      string              `bson:"byName" json:"byName"`

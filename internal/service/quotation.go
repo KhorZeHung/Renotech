@@ -55,33 +55,48 @@ func generateUniqueQuotationName(baseName string, systemContext *model.SystemCon
 	return "", utils.SystemError(enum.ErrorCodeValidation, "Unable to generate unique name", nil)
 }
 
+func validateMaterialDetail(materialDetail database.SystemAreaMaterialDetail, materialCollection *mongo.Collection, systemContext *model.SystemContext) error {
+	// Only validate if material ID is provided
+	if materialDetail.Material != nil {
+		// Check if material exists, is active, not deleted, and belongs to company
+		filter := bson.M{
+			"_id":       *materialDetail.Material,
+			"company":   systemContext.User.Company,
+			"status":    enum.MaterialStatusActive,
+			"isDeleted": false,
+		}
+
+		count, err := materialCollection.CountDocuments(context.Background(), filter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate material", nil)
+		}
+
+		if count == 0 {
+			return utils.SystemError(
+				enum.ErrorCodeValidation,
+				"Material not found or not active",
+				map[string]interface{}{"materialId": materialDetail.Material.Hex()},
+			)
+		}
+	}
+
+	// Recursively validate template materials
+	for _, templateMaterial := range materialDetail.Template {
+		if err := validateMaterialDetail(templateMaterial, materialCollection, systemContext); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func validateAreaMaterials(areaMaterials []database.SystemAreaMaterial, systemContext *model.SystemContext) error {
 	materialCollection := systemContext.MongoDB.Collection("material")
 
 	for _, areaMaterial := range areaMaterials {
 		for _, materialDetail := range areaMaterial.Materials {
-			// Only validate if material ID is provided
-			if materialDetail.Material != nil {
-				// Check if material exists, is active, not deleted, and belongs to company
-				filter := bson.M{
-					"_id":       *materialDetail.Material,
-					"company":   systemContext.User.Company,
-					"status":    enum.MaterialStatusActive,
-					"isDeleted": false,
-				}
-
-				count, err := materialCollection.CountDocuments(context.Background(), filter)
-				if err != nil {
-					return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate material", nil)
-				}
-
-				if count == 0 {
-					return utils.SystemError(
-						enum.ErrorCodeValidation,
-						"Material not found or not active",
-						map[string]interface{}{"materialId": materialDetail.Material.Hex()},
-					)
-				}
+			if err := validateMaterialDetail(materialDetail, materialCollection, systemContext); err != nil {
+				return err
 			}
 		}
 	}
