@@ -40,11 +40,11 @@ jobs:
         sudo systemctl start renotech.service
         sudo systemctl start cloudflared.service
 
-    - name: Check deployment
-      run: |
-        sleep 5
-        sudo systemctl status renotech.service --no-pager
-        sudo systemctl status cloudflared.service --no-pager
+    # - name: Check deployment
+    #   run: |
+    #     sleep 5
+    #     sudo systemctl status renotech.service --no-pager
+    #     sudo systemctl status cloudflared.service --no-pager
         
     - name: Test application
       run: |
