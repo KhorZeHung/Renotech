@@ -27,13 +27,51 @@ func createActionLog(description string, systemContext *model.SystemContext) dat
 	}
 }
 
+func calculateProjectTotals(areaMaterials []database.SystemAreaMaterial, discount database.SystemDiscount) (float64, float64, float64, float64) {
+	var totalCost, totalCharge float64
+
+	// First, calculate individual material totals and sum them up
+	for i := range areaMaterials {
+		for j := range areaMaterials[i].Materials {
+			material := &areaMaterials[i].Materials[j]
+
+			// Calculate individual material totals
+			material.TotalCost = material.CostPerUnit * material.Quantity
+			material.TotalPrice = material.PricePerUnit * material.Quantity
+
+			// Add to overall totals
+			totalCost += material.TotalCost
+			totalCharge += material.TotalPrice
+		}
+	}
+
+	// Calculate discount
+	var totalDiscount float64
+	switch discount.Type {
+	case enum.DiscountTypeRate:
+		totalDiscount = totalCharge * (discount.Value / 100)
+	case enum.DiscountTypeAmount:
+		totalDiscount = discount.Value
+	default:
+		totalDiscount = 0
+	}
+
+	// Calculate net charge (total charge minus discount)
+	totalNettCharge := totalCharge - totalDiscount
+	if totalNettCharge < 0 {
+		totalNettCharge = 0
+	}
+
+	return totalCost, totalCharge, totalDiscount, totalNettCharge
+}
+
 func validatePICUsers(picIDs []primitive.ObjectID, systemContext *model.SystemContext) error {
 	if len(picIDs) == 0 {
 		return utils.SystemError(enum.ErrorCodeValidation, "At least one PIC is required", nil)
 	}
 
 	userCollection := systemContext.MongoDB.Collection("user")
-	
+
 	for _, picID := range picIDs {
 		filter := bson.M{
 			"_id":       picID,
@@ -121,8 +159,8 @@ func ProjectCreate(input *model.ProjectCreateRequest, systemContext *model.Syste
 		Discount:            quotation.Discount,
 		TotalDiscount:       quotation.TotalDiscount,
 		TotalCharge:         quotation.TotalCharge,
+		TotalNettCharge:     quotation.TotalNettCharge,
 		TotalCost:           quotation.TotalCost,
-		IsStared:            quotation.IsStared,
 		Company:             quotation.Company,
 		CreatedAt:           time.Now(),
 		CreatedBy:           *systemContext.User.ID,
@@ -171,6 +209,27 @@ func projectUpdateValidation(input *model.ProjectUpdateRequest, systemContext *m
 		return nil, err
 	}
 
+	// Validate quotation if provided and changed
+	if !input.Quotation.IsZero() && input.Quotation != currentProject.Quotation {
+		quotationCollection := systemContext.MongoDB.Collection("quotation")
+		quotationFilter := bson.M{
+			"_id":       input.Quotation,
+			"company":   systemContext.User.Company,
+			"isDeleted": false,
+		}
+
+		var quotation database.Quotation
+		err := quotationCollection.FindOne(context.Background(), quotationFilter).Decode(&quotation)
+		if err != nil {
+			return nil, utils.SystemError(enum.ErrorCodeNotFound, "Quotation not found", nil)
+		}
+
+		// Ensure quotation belongs to the same folder as the project
+		if quotation.Folder != currentProject.Folder {
+			return nil, utils.SystemError(enum.ErrorCodeValidation, "Quotation must belong to the same folder as the project", nil)
+		}
+	}
+
 	return &currentProject, nil
 }
 
@@ -185,7 +244,7 @@ func ProjectUpdate(input *model.ProjectUpdateRequest, systemContext *model.Syste
 
 	// Build action logs for changes
 	actionLogs := currentProject.ActionLogs
-	
+
 	if input.Description != currentProject.Description {
 		actionLogs = append(actionLogs, createActionLog("Project description updated", systemContext))
 	}
@@ -195,7 +254,10 @@ func ProjectUpdate(input *model.ProjectUpdateRequest, systemContext *model.Syste
 	if !input.EstimatedCompleteAt.Equal(currentProject.EstimatedCompleteAt) {
 		actionLogs = append(actionLogs, createActionLog(fmt.Sprintf("Estimated completion date changed to %s", input.EstimatedCompleteAt.Format("2006-01-02")), systemContext))
 	}
-	
+	if !input.Quotation.IsZero() && input.Quotation != currentProject.Quotation {
+		actionLogs = append(actionLogs, createActionLog("Project quotation updated", systemContext))
+	}
+
 	// Check if PIC changed
 	picChanged := len(input.PIC) != len(currentProject.PIC)
 	if !picChanged {
@@ -214,13 +276,7 @@ func ProjectUpdate(input *model.ProjectUpdateRequest, systemContext *model.Syste
 		actionLogs = append(actionLogs, createActionLog("Project PIC updated", systemContext))
 	}
 
-	// Build update object
-	filter := bson.M{
-		"_id":       input.ID,
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-	}
-
+	// Determine which fields to update
 	updateFields := bson.M{
 		"description":         input.Description,
 		"remark":              input.Remark,
@@ -229,6 +285,48 @@ func ProjectUpdate(input *model.ProjectUpdateRequest, systemContext *model.Syste
 		"actionLogs":          actionLogs,
 		"updatedAt":           time.Now(),
 		"updatedBy":           systemContext.User.ID,
+	}
+
+	// Update quotation if provided
+	if !input.Quotation.IsZero() {
+		updateFields["quotation"] = input.Quotation
+	}
+
+	// Calculate and update financial fields if areaMaterials or discount provided
+	if len(input.AreaMaterials) > 0 || input.Discount.Type != "" {
+		// Use provided areaMaterials or current ones
+		areaMaterials := input.AreaMaterials
+		if len(areaMaterials) == 0 {
+			areaMaterials = currentProject.AreaMaterials
+		}
+
+		// Use provided discount or current one
+		discount := input.Discount
+		if discount.Type == "" {
+			discount = currentProject.Discount
+		}
+
+		// Calculate new totals
+		totalCost, totalCharge, totalDiscount, totalNettCharge := calculateProjectTotals(areaMaterials, discount)
+
+		// Update financial fields
+		updateFields["areaMaterials"] = areaMaterials
+		updateFields["discount"] = discount
+		updateFields["totalCost"] = totalCost
+		updateFields["totalCharge"] = totalCharge
+		updateFields["totalDiscount"] = totalDiscount
+		updateFields["totalNettCharge"] = totalNettCharge
+
+		// Add action log for financial changes
+		actionLogs = append(actionLogs, createActionLog("Project costs and materials updated", systemContext))
+		updateFields["actionLogs"] = actionLogs
+	}
+
+	// Build update object
+	filter := bson.M{
+		"_id":       input.ID,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
 	}
 
 	update := bson.M{"$set": updateFields}
@@ -335,8 +433,8 @@ func ProjectDelete(input primitive.ObjectID, systemContext *model.SystemContext)
 		"$set": bson.M{
 			"isDeleted":  true,
 			"actionLogs": actionLogs,
-			"updatedAt": time.Now(),
-			"updatedBy": systemContext.User.ID,
+			"updatedAt":  time.Now(),
+			"updatedBy":  systemContext.User.ID,
 		},
 	}
 
@@ -346,54 +444,6 @@ func ProjectDelete(input primitive.ObjectID, systemContext *model.SystemContext)
 	}
 
 	_ = collection.FindOne(context.Background(), filter).Decode(&doc)
-
-	return &doc, nil
-}
-
-func ProjectToggleStar(projectID primitive.ObjectID, isStared bool, systemContext *model.SystemContext) (*database.Project, error) {
-	collection := systemContext.MongoDB.Collection("project")
-
-	// Check if project exists
-	filter := bson.M{
-		"_id":       projectID,
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-	}
-
-	var doc database.Project
-	err := collection.FindOne(context.Background(), filter).Decode(&doc)
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeNotFound, "project not found", nil)
-	}
-
-	// Add action log for star toggle
-	actionLogs := doc.ActionLogs
-	starAction := "starred"
-	if !isStared {
-		starAction = "unstarred"
-	}
-	actionLogs = append(actionLogs, createActionLog(fmt.Sprintf("Project %s", starAction), systemContext))
-
-	// Toggle star
-	update := bson.M{
-		"$set": bson.M{
-			"isStared":   isStared,
-			"actionLogs": actionLogs,
-			"updatedAt":  time.Now(),
-			"updatedBy":  systemContext.User.ID,
-		},
-	}
-
-	_, err = collection.UpdateOne(context.Background(), filter, update)
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "failed to toggle star", nil)
-	}
-
-	// Return updated project
-	err = collection.FindOne(context.Background(), filter).Decode(&doc)
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve updated project", nil)
-	}
 
 	return &doc, nil
 }

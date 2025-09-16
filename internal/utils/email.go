@@ -78,7 +78,7 @@ func SendEmail(emailData *EmailData) error {
 
 func SendPasswordResetEmail(email, resetToken string) error {
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s&email=%s",
-		GetEnvString("FRONTEND_URL", "http://localhost:3000"),
+		GetEnvString("FRONTEND_URL", "https://app.renotech.space"),
 		resetToken,
 		email,
 	)

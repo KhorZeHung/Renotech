@@ -31,7 +31,7 @@ func createOrderActionLog(description string, systemContext *model.SystemContext
 func generateUniquePONumber(systemContext *model.SystemContext) (string, error) {
 	collection := systemContext.MongoDB.Collection("order")
 	year := time.Now().Year()
-	
+
 	// Find the highest PO number for current year
 	filter := bson.M{
 		"company":   systemContext.User.Company,
@@ -40,17 +40,17 @@ func generateUniquePONumber(systemContext *model.SystemContext) (string, error) 
 			"$regex": fmt.Sprintf("^PO-%d-", year),
 		},
 	}
-	
+
 	opts := options.Find().SetSort(bson.M{"poNumber": -1}).SetLimit(1)
 	cursor, err := collection.Find(context.Background(), filter, opts)
 	if err != nil {
 		return "", utils.SystemError(enum.ErrorCodeInternal, "Failed to generate PO number", nil)
 	}
 	defer cursor.Close(context.Background())
-	
+
 	var lastOrder database.Order
 	nextNumber := 1
-	
+
 	if cursor.Next(context.Background()) {
 		if err := cursor.Decode(&lastOrder); err == nil {
 			// Extract number from PO-YYYY-XXX format
@@ -62,31 +62,31 @@ func generateUniquePONumber(systemContext *model.SystemContext) (string, error) 
 			}
 		}
 	}
-	
+
 	return fmt.Sprintf("PO-%d-%03d", year, nextNumber), nil
 }
 
 func populateSupplierFromSystem(supplierID primitive.ObjectID, systemContext *model.SystemContext) (*database.OrderSupplier, error) {
 	supplierCollection := systemContext.MongoDB.Collection("supplier")
-	
+
 	filter := bson.M{
 		"_id":       supplierID,
 		"company":   systemContext.User.Company,
 		"isDeleted": false,
 	}
-	
+
 	var supplier database.Supplier
 	err := supplierCollection.FindOne(context.Background(), filter).Decode(&supplier)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Supplier not found", nil)
 	}
-	
+
 	// Get the primary address (first one if available)
 	var address database.SystemAddress
 	if len(supplier.OfficeAddress) > 0 {
 		address = supplier.OfficeAddress[0]
 	}
-	
+
 	return &database.OrderSupplier{
 		ID:      supplier.ID,
 		Name:    supplier.Name,
@@ -99,33 +99,33 @@ func populateSupplierFromSystem(supplierID primitive.ObjectID, systemContext *mo
 
 func calculateOrderTotals(items []database.OrderItem, taxRate float64) (float64, float64, float64) {
 	var subTotal float64
-	
+
 	// Calculate individual item totals and sum them up
 	for i := range items {
 		items[i].TotalPrice = items[i].UnitPrice * items[i].Quantity
 		subTotal += items[i].TotalPrice
 	}
-	
+
 	// Calculate tax
 	taxAmount := subTotal * (taxRate / 100)
 	totalCharge := subTotal + taxAmount
-	
+
 	return subTotal, taxAmount, totalCharge
 }
 
 func aggregateMaterialsBySupplier(areaMaterials []database.SystemAreaMaterial) map[string][]database.SystemAreaMaterialDetail {
 	supplierMaterials := make(map[string][]database.SystemAreaMaterialDetail)
-	
+
 	for _, areaMaterial := range areaMaterials {
 		for _, materialDetail := range areaMaterial.Materials {
 			// Process main material
 			addMaterialToSupplierMap(supplierMaterials, materialDetail, areaMaterial.Area.Name)
-			
+
 			// Process template materials recursively
 			addTemplateMaterials(supplierMaterials, materialDetail.Template, areaMaterial.Area.Name)
 		}
 	}
-	
+
 	return supplierMaterials
 }
 
@@ -154,33 +154,16 @@ func OrderInit(input *model.OrderInitRequest, systemContext *model.SystemContext
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Aggregate materials by supplier
 	supplierMaterials := aggregateMaterialsBySupplier(project.AreaMaterials)
-	
+
 	var orders []database.Order
 	supplierSummaries := make(map[string]model.OrderSupplierSummary)
 	totalValue := 0.0
-	
+
 	// Create orders for each supplier
 	for supplierKey, materials := range supplierMaterials {
-		// Skip if user selected specific suppliers and this one is not selected
-		if len(input.SelectedSuppliers) > 0 {
-			found := false
-			if supplierKey != "no-supplier" {
-				supplierObjID, _ := primitive.ObjectIDFromHex(supplierKey)
-				for _, selectedSupplier := range input.SelectedSuppliers {
-					if selectedSupplier == supplierObjID {
-						found = true
-						break
-					}
-				}
-			}
-			if !found && supplierKey != "no-supplier" {
-				continue
-			}
-		}
-		
 		// Get supplier information
 		var orderSupplier database.OrderSupplier
 		if supplierKey == "no-supplier" {
@@ -199,65 +182,64 @@ func OrderInit(input *model.OrderInitRequest, systemContext *model.SystemContext
 				orderSupplier = *supplierInfo
 			}
 		}
-		
+
 		// Convert materials to order items
 		var orderItems []database.OrderItem
 		for _, material := range materials {
 			orderItem := database.OrderItem{
-				Material:        material.Material,
-				Name:            material.Name,
-				Description:     fmt.Sprintf("From project: %s", project.Description),
-				Brand:           material.Brand,
-				Unit:            material.Unit,
-				Quantity:        material.Quantity,
-				UnitPrice:       material.CostPerUnit,
-				TotalPrice:      material.TotalCost,
-				Remark:          material.Remark,
-				OriginalMaterial: material.Material,
+				Material:    material.Material,
+				Name:        material.Name,
+				Description: fmt.Sprintf("From project: %s", project.Description),
+				Brand:       material.Brand,
+				Unit:        material.Unit,
+				Quantity:    material.Quantity,
+				UnitPrice:   material.CostPerUnit,
+				TotalPrice:  material.TotalCost,
+				Remark:      material.Remark,
 			}
 			orderItems = append(orderItems, orderItem)
 		}
-		
+
 		// Calculate totals
 		subTotal, taxAmount, totalCharge := calculateOrderTotals(orderItems, 0) // Default 0% tax
-		
+
 		// Generate PO number
 		poNumber, err := generateUniquePONumber(systemContext)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Create initial action log
 		actionLogs := []database.SystemActionLog{
 			createOrderActionLog(fmt.Sprintf("Order initialized from project: %s", project.Description), systemContext),
 		}
-		
+
 		// Create order
 		order := database.Order{
-			Project:         &input.ProjectID,
-			Company:         systemContext.User.Company,
-			Supplier:        orderSupplier,
-			PONumber:        poNumber,
-			OrderDate:       time.Now(),
+			Project:          &input.ProjectID,
+			Company:          systemContext.User.Company,
+			Supplier:         orderSupplier,
+			PONumber:         poNumber,
+			OrderDate:        time.Now(),
 			ExpectedDelivery: time.Now().AddDate(0, 0, 30), // Default 30 days
-			Items:           orderItems,
-			SubTotal:        subTotal,
-			TaxRate:         0,
-			TaxAmount:       taxAmount,
-			TotalCharge:     totalCharge,
-			Status:          enum.OrderStatusDraft,
-			Priority:        enum.OrderPriorityMedium,
-			ActionLogs:      actionLogs,
-			CreatedAt:       time.Now(),
-			CreatedBy:       *systemContext.User.ID,
-			UpdatedAt:       time.Now(),
-			UpdatedBy:       systemContext.User.ID,
-			IsDeleted:       false,
+			Items:            orderItems,
+			SubTotal:         subTotal,
+			TaxRate:          0,
+			TaxAmount:        taxAmount,
+			TotalCharge:      totalCharge,
+			Status:           enum.OrderStatusDraft,
+			Priority:         enum.OrderPriorityMedium,
+			ActionLogs:       actionLogs,
+			CreatedAt:        time.Now(),
+			CreatedBy:        *systemContext.User.ID,
+			UpdatedAt:        time.Now(),
+			UpdatedBy:        systemContext.User.ID,
+			IsDeleted:        false,
 		}
-		
+
 		orders = append(orders, order)
 		totalValue += totalCharge
-		
+
 		// Create supplier summary
 		supplierSummaries[supplierKey] = model.OrderSupplierSummary{
 			SupplierName: orderSupplier.Name,
@@ -265,7 +247,7 @@ func OrderInit(input *model.OrderInitRequest, systemContext *model.SystemContext
 			TotalValue:   totalCharge,
 		}
 	}
-	
+
 	// Save all orders to database
 	if len(orders) > 0 {
 		collection := systemContext.MongoDB.Collection("order")
@@ -273,25 +255,25 @@ func OrderInit(input *model.OrderInitRequest, systemContext *model.SystemContext
 		for _, order := range orders {
 			docs = append(docs, order)
 		}
-		
+
 		result, err := collection.InsertMany(context.Background(), docs)
 		if err != nil {
 			return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to create orders", nil)
 		}
-		
+
 		// Update orders with inserted IDs
 		for i, insertedID := range result.InsertedIDs {
 			objectID := insertedID.(primitive.ObjectID)
 			orders[i].ID = &objectID
 		}
 	}
-	
+
 	response := &model.OrderInitResponse{
 		Orders: orders,
 		Summary: struct {
-			TotalOrders   int                            `json:"totalOrders"`
-			SupplierCount int                            `json:"supplierCount"`
-			TotalValue    float64                        `json:"totalValue"`
+			TotalOrders   int                                   `json:"totalOrders"`
+			SupplierCount int                                   `json:"supplierCount"`
+			TotalValue    float64                               `json:"totalValue"`
 			BySupplier    map[string]model.OrderSupplierSummary `json:"bySupplier"`
 		}{
 			TotalOrders:   len(orders),
@@ -300,13 +282,13 @@ func OrderInit(input *model.OrderInitRequest, systemContext *model.SystemContext
 			BySupplier:    supplierSummaries,
 		},
 	}
-	
+
 	return response, nil
 }
 
 func OrderCreate(input *model.OrderCreateRequest, systemContext *model.SystemContext) (*database.Order, error) {
 	collection := systemContext.MongoDB.Collection("order")
-	
+
 	// Validate supplier if ID is provided
 	if input.Supplier.ID != nil {
 		supplierInfo, err := populateSupplierFromSystem(*input.Supplier.ID, systemContext)
@@ -327,83 +309,83 @@ func OrderCreate(input *model.OrderCreateRequest, systemContext *model.SystemCon
 			input.Supplier.Logo = supplierInfo.Logo
 		}
 	}
-	
+
 	// Validate supplier name is provided
 	if strings.TrimSpace(input.Supplier.Name) == "" {
 		return nil, utils.SystemError(enum.ErrorCodeValidation, "Supplier name is required", nil)
 	}
-	
+
 	// Calculate totals
 	subTotal, taxAmount, totalCharge := calculateOrderTotals(input.Items, input.TaxRate)
-	
+
 	// Generate PO number
 	poNumber, err := generateUniquePONumber(systemContext)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create initial action log
 	actionLogs := []database.SystemActionLog{
 		createOrderActionLog(fmt.Sprintf("Order created for supplier: %s", input.Supplier.Name), systemContext),
 	}
-	
+
 	// Create order object
 	order := &database.Order{
-		Project:         input.Project,
-		Company:         systemContext.User.Company,
-		Supplier:        input.Supplier,
-		PONumber:        poNumber,
-		OrderDate:       input.OrderDate,
+		Project:          input.Project,
+		Company:          systemContext.User.Company,
+		Supplier:         input.Supplier,
+		PONumber:         poNumber,
+		OrderDate:        input.OrderDate,
 		ExpectedDelivery: input.ExpectedDelivery,
-		DeliveryAddress: input.DeliveryAddress,
-		DeliveryContact: input.DeliveryContact,
-		DeliveryPhone:   input.DeliveryPhone,
-		DeliveryRemark:  input.DeliveryRemark,
-		TermConditions:  input.TermConditions,
-		Items:           input.Items,
-		SubTotal:        subTotal,
-		TaxRate:         input.TaxRate,
-		TaxAmount:       taxAmount,
-		TotalCharge:     totalCharge,
-		Status:          enum.OrderStatusDraft,
-		Priority:        input.Priority,
-		Remark:          input.Remark,
-		InternalNotes:   input.InternalNotes,
-		ActionLogs:      actionLogs,
-		CreatedAt:       time.Now(),
-		CreatedBy:       *systemContext.User.ID,
-		UpdatedAt:       time.Now(),
-		UpdatedBy:       systemContext.User.ID,
-		IsDeleted:       false,
+		DeliveryAddress:  input.DeliveryAddress,
+		DeliveryContact:  input.DeliveryContact,
+		DeliveryPhone:    input.DeliveryPhone,
+		DeliveryRemark:   input.DeliveryRemark,
+		TermConditions:   input.TermConditions,
+		Items:            input.Items,
+		SubTotal:         subTotal,
+		TaxRate:          input.TaxRate,
+		TaxAmount:        taxAmount,
+		TotalCharge:      totalCharge,
+		Status:           enum.OrderStatusDraft,
+		Priority:         input.Priority,
+		Remark:           input.Remark,
+		InternalNotes:    input.InternalNotes,
+		ActionLogs:       actionLogs,
+		CreatedAt:        time.Now(),
+		CreatedBy:        *systemContext.User.ID,
+		UpdatedAt:        time.Now(),
+		UpdatedBy:        systemContext.User.ID,
+		IsDeleted:        false,
 	}
-	
+
 	result, err := collection.InsertOne(context.Background(), order)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to create order", nil)
 	}
-	
+
 	orderID := result.InsertedID.(primitive.ObjectID)
 	order.ID = &orderID
-	
+
 	return order, nil
 }
 
 func OrderUpdate(input *model.OrderUpdateRequest, systemContext *model.SystemContext) (*database.Order, error) {
 	collection := systemContext.MongoDB.Collection("order")
-	
+
 	// Check if order exists
 	filter := bson.M{
 		"_id":       input.ID,
 		"company":   systemContext.User.Company,
 		"isDeleted": false,
 	}
-	
+
 	var currentOrder database.Order
 	err := collection.FindOne(context.Background(), filter).Decode(&currentOrder)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Order not found", nil)
 	}
-	
+
 	// Validate supplier if ID is provided
 	if input.Supplier.ID != nil {
 		supplierInfo, err := populateSupplierFromSystem(*input.Supplier.ID, systemContext)
@@ -424,18 +406,18 @@ func OrderUpdate(input *model.OrderUpdateRequest, systemContext *model.SystemCon
 			input.Supplier.Logo = supplierInfo.Logo
 		}
 	}
-	
+
 	// Validate supplier name is provided
 	if strings.TrimSpace(input.Supplier.Name) == "" {
 		return nil, utils.SystemError(enum.ErrorCodeValidation, "Supplier name is required", nil)
 	}
-	
+
 	// Calculate totals
 	subTotal, taxAmount, totalCharge := calculateOrderTotals(input.Items, input.TaxRate)
-	
+
 	// Build action logs for changes
 	actionLogs := currentOrder.ActionLogs
-	
+
 	if input.Supplier.Name != currentOrder.Supplier.Name {
 		actionLogs = append(actionLogs, createOrderActionLog(fmt.Sprintf("Supplier changed to: %s", input.Supplier.Name), systemContext))
 	}
@@ -448,71 +430,71 @@ func OrderUpdate(input *model.OrderUpdateRequest, systemContext *model.SystemCon
 	if len(input.Items) != len(currentOrder.Items) {
 		actionLogs = append(actionLogs, createOrderActionLog("Order items updated", systemContext))
 	}
-	
+
 	// Build update object
 	updateFields := bson.M{
-		"supplier":        input.Supplier,
-		"orderDate":       input.OrderDate,
+		"supplier":         input.Supplier,
+		"orderDate":        input.OrderDate,
 		"expectedDelivery": input.ExpectedDelivery,
-		"deliveryAddress": input.DeliveryAddress,
-		"deliveryContact": input.DeliveryContact,
-		"deliveryPhone":   input.DeliveryPhone,
-		"deliveryRemark":  input.DeliveryRemark,
-		"termConditions":  input.TermConditions,
-		"items":           input.Items,
-		"subTotal":        subTotal,
-		"taxRate":         input.TaxRate,
-		"taxAmount":       taxAmount,
-		"totalCharge":     totalCharge,
-		"priority":        input.Priority,
-		"remark":          input.Remark,
-		"internalNotes":   input.InternalNotes,
-		"actionLogs":      actionLogs,
-		"updatedAt":       time.Now(),
-		"updatedBy":       systemContext.User.ID,
+		"deliveryAddress":  input.DeliveryAddress,
+		"deliveryContact":  input.DeliveryContact,
+		"deliveryPhone":    input.DeliveryPhone,
+		"deliveryRemark":   input.DeliveryRemark,
+		"termConditions":   input.TermConditions,
+		"items":            input.Items,
+		"subTotal":         subTotal,
+		"taxRate":          input.TaxRate,
+		"taxAmount":        taxAmount,
+		"totalCharge":      totalCharge,
+		"priority":         input.Priority,
+		"remark":           input.Remark,
+		"internalNotes":    input.InternalNotes,
+		"actionLogs":       actionLogs,
+		"updatedAt":        time.Now(),
+		"updatedBy":        systemContext.User.ID,
 	}
-	
+
 	update := bson.M{"$set": updateFields}
-	
+
 	_, err = collection.UpdateOne(context.Background(), filter, update)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to update order", nil)
 	}
-	
+
 	// Return updated order
 	var doc database.Order
 	err = collection.FindOne(context.Background(), filter).Decode(&doc)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve updated order", nil)
 	}
-	
+
 	return &doc, nil
 }
 
 func OrderGetByID(orderID primitive.ObjectID, systemContext *model.SystemContext) (*database.Order, error) {
 	collection := systemContext.MongoDB.Collection("order")
-	
+
 	filter := bson.M{
 		"_id":       orderID,
 		"company":   systemContext.User.Company,
 		"isDeleted": false,
 	}
-	
+
 	var doc database.Order
 	err := collection.FindOne(context.Background(), filter).Decode(&doc)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Order not found", nil)
 	}
-	
+
 	return &doc, nil
 }
 
 func OrderList(input model.OrderListRequest, systemContext *model.SystemContext) (*model.OrderListResponse, error) {
 	collection := systemContext.MongoDB.Collection("order")
-	
+
 	// Build base filter
 	filter := bson.M{"isDeleted": false, "company": systemContext.User.Company}
-	
+
 	// Add field-specific filters
 	if input.Project != nil {
 		filter["project"] = input.Project
@@ -542,7 +524,7 @@ func OrderList(input model.OrderListRequest, systemContext *model.SystemContext)
 			filter["orderDate"] = bson.M{"$lte": *input.DateTo}
 		}
 	}
-	
+
 	// Add global search filter
 	if strings.TrimSpace(input.Search) != "" {
 		searchRegex := primitive.Regex{Pattern: input.Search, Options: "i"}
@@ -554,7 +536,7 @@ func OrderList(input model.OrderListRequest, systemContext *model.SystemContext)
 				{"internalNotes": searchRegex},
 			},
 		}
-		
+
 		// Combine existing filter with search filter
 		if len(filter) > 2 {
 			filter = bson.M{
@@ -567,89 +549,89 @@ func OrderList(input model.OrderListRequest, systemContext *model.SystemContext)
 			filter["$or"] = searchFilter["$or"]
 		}
 	}
-	
+
 	return executeOrderList(collection, filter, input, systemContext)
 }
 
 func OrderDelete(input primitive.ObjectID, systemContext *model.SystemContext) (*database.Order, error) {
 	collection := systemContext.MongoDB.Collection("order")
-	
+
 	// Check if order exists
 	filter := bson.M{
 		"_id":       input,
 		"company":   systemContext.User.Company,
 		"isDeleted": false,
 	}
-	
+
 	var doc database.Order
 	err := collection.FindOne(context.Background(), filter).Decode(&doc)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Order not found", nil)
 	}
-	
+
 	// Add deletion action log
 	actionLogs := doc.ActionLogs
 	actionLogs = append(actionLogs, createOrderActionLog("Order deleted", systemContext))
-	
+
 	// Soft delete
 	update := bson.M{
 		"$set": bson.M{
 			"isDeleted":  true,
 			"actionLogs": actionLogs,
-			"updatedAt": time.Now(),
-			"updatedBy": systemContext.User.ID,
+			"updatedAt":  time.Now(),
+			"updatedBy":  systemContext.User.ID,
 		},
 	}
-	
+
 	_, err = collection.UpdateOne(context.Background(), filter, update)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to delete order", nil)
 	}
-	
+
 	return &doc, nil
 }
 
 func OrderUpdateStatus(orderID primitive.ObjectID, newStatus enum.OrderStatus, systemContext *model.SystemContext) (*database.Order, error) {
 	collection := systemContext.MongoDB.Collection("order")
-	
+
 	// Check if order exists
 	filter := bson.M{
 		"_id":       orderID,
 		"company":   systemContext.User.Company,
 		"isDeleted": false,
 	}
-	
+
 	var doc database.Order
 	err := collection.FindOne(context.Background(), filter).Decode(&doc)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Order not found", nil)
 	}
-	
+
 	// Add status change action log
 	actionLogs := doc.ActionLogs
 	actionLogs = append(actionLogs, createOrderActionLog(fmt.Sprintf("Status changed from %s to %s", doc.Status, newStatus), systemContext))
-	
+
 	// Update status
 	update := bson.M{
 		"$set": bson.M{
 			"status":     newStatus,
 			"actionLogs": actionLogs,
-			"updatedAt": time.Now(),
-			"updatedBy": systemContext.User.ID,
+			"updatedAt":  time.Now(),
+			"updatedBy":  systemContext.User.ID,
 		},
 	}
-	
+
 	_, err = collection.UpdateOne(context.Background(), filter, update)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to update order status", nil)
 	}
-	
+
 	// Return updated order
 	err = collection.FindOne(context.Background(), filter).Decode(&doc)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve updated order", nil)
 	}
-	
+
 	return &doc, nil
 }
 
@@ -659,58 +641,58 @@ func OrderDuplicate(orderID primitive.ObjectID, systemContext *model.SystemConte
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Generate new PO number
 	poNumber, err := generateUniquePONumber(systemContext)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create action log for duplication
 	actionLogs := []database.SystemActionLog{
 		createOrderActionLog(fmt.Sprintf("Order duplicated from %s", originalOrder.PONumber), systemContext),
 	}
-	
+
 	// Create new order based on original
 	duplicatedOrder := &database.Order{
-		Project:         originalOrder.Project,
-		Company:         originalOrder.Company,
-		Supplier:        originalOrder.Supplier,
-		PONumber:        poNumber,
-		OrderDate:       time.Now(), // Set to current date
+		Project:          originalOrder.Project,
+		Company:          originalOrder.Company,
+		Supplier:         originalOrder.Supplier,
+		PONumber:         poNumber,
+		OrderDate:        time.Now(),                   // Set to current date
 		ExpectedDelivery: time.Now().AddDate(0, 0, 30), // Default 30 days from now
-		DeliveryAddress: originalOrder.DeliveryAddress,
-		DeliveryContact: originalOrder.DeliveryContact,
-		DeliveryPhone:   originalOrder.DeliveryPhone,
-		DeliveryRemark:  originalOrder.DeliveryRemark,
-		TermConditions:  originalOrder.TermConditions,
-		Items:           originalOrder.Items, // Copy all items
-		SubTotal:        originalOrder.SubTotal,
-		TaxRate:         originalOrder.TaxRate,
-		TaxAmount:       originalOrder.TaxAmount,
-		TotalCharge:     originalOrder.TotalCharge,
-		Status:          enum.OrderStatusDraft, // Reset to draft
-		Priority:        originalOrder.Priority,
-		Remark:          originalOrder.Remark,
-		InternalNotes:   originalOrder.InternalNotes,
-		ActionLogs:      actionLogs,
-		CreatedAt:       time.Now(),
-		CreatedBy:       *systemContext.User.ID,
-		UpdatedAt:       time.Now(),
-		UpdatedBy:       systemContext.User.ID,
-		IsDeleted:       false,
+		DeliveryAddress:  originalOrder.DeliveryAddress,
+		DeliveryContact:  originalOrder.DeliveryContact,
+		DeliveryPhone:    originalOrder.DeliveryPhone,
+		DeliveryRemark:   originalOrder.DeliveryRemark,
+		TermConditions:   originalOrder.TermConditions,
+		Items:            originalOrder.Items, // Copy all items
+		SubTotal:         originalOrder.SubTotal,
+		TaxRate:          originalOrder.TaxRate,
+		TaxAmount:        originalOrder.TaxAmount,
+		TotalCharge:      originalOrder.TotalCharge,
+		Status:           enum.OrderStatusDraft, // Reset to draft
+		Priority:         originalOrder.Priority,
+		Remark:           originalOrder.Remark,
+		InternalNotes:    originalOrder.InternalNotes,
+		ActionLogs:       actionLogs,
+		CreatedAt:        time.Now(),
+		CreatedBy:        *systemContext.User.ID,
+		UpdatedAt:        time.Now(),
+		UpdatedBy:        systemContext.User.ID,
+		IsDeleted:        false,
 	}
-	
+
 	// Save to database
 	collection := systemContext.MongoDB.Collection("order")
 	result, err := collection.InsertOne(context.Background(), duplicatedOrder)
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to duplicate order", nil)
 	}
-	
+
 	newOrderID := result.InsertedID.(primitive.ObjectID)
 	duplicatedOrder.ID = &newOrderID
-	
+
 	return duplicatedOrder, nil
 }
 
@@ -722,7 +704,7 @@ func executeOrderList(collection *mongo.Collection, filter bson.M, input model.O
 		systemContext.Logger.Error("service.OrderList", zap.Error(err))
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to count orders", nil)
 	}
-	
+
 	// Set default pagination values
 	page := input.Page
 	if page <= 0 {
@@ -735,24 +717,24 @@ func executeOrderList(collection *mongo.Collection, filter bson.M, input model.O
 	if limit > 100 {
 		limit = 100 // Maximum limit
 	}
-	
+
 	// Calculate pagination
 	skip := (page - 1) * limit
 	totalPages := int(math.Ceil(float64(total) / float64(limit)))
-	
+
 	// Build sort options
 	sortOptions := input.Sort
-	
+
 	if len(sortOptions) < 1 {
 		sortOptions = bson.M{"createdAt": -1} // Default: newest first
 	}
-	
+
 	// Create find options
 	findOptions := options.Find().
 		SetSkip(int64(skip)).
 		SetLimit(int64(limit)).
 		SetSort(sortOptions)
-	
+
 	// Execute query
 	cursor, err := collection.Find(context.Background(), filter, findOptions)
 	if err != nil {
@@ -760,14 +742,14 @@ func executeOrderList(collection *mongo.Collection, filter bson.M, input model.O
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve orders", nil)
 	}
 	defer cursor.Close(context.Background())
-	
+
 	// Decode results
 	var orders []bson.M
 	if err = cursor.All(context.Background(), &orders); err != nil {
 		systemContext.Logger.Error("service.OrderList", zap.Error(err))
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to decode orders", nil)
 	}
-	
+
 	response := &model.OrderListResponse{
 		Data:       orders,
 		Page:       page,
@@ -775,6 +757,6 @@ func executeOrderList(collection *mongo.Collection, filter bson.M, input model.O
 		Total:      total,
 		TotalPages: totalPages,
 	}
-	
+
 	return response, nil
 }

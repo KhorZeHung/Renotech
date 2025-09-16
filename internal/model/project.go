@@ -5,6 +5,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"renotech.com.my/internal/database"
 )
 
 // Project CRUD request/response models
@@ -15,11 +16,14 @@ type ProjectCreateRequest struct {
 }
 
 type ProjectUpdateRequest struct {
-	ID                  primitive.ObjectID   `json:"_id" binding:"required"`
-	Description         string               `json:"description"`
-	Remark              string               `json:"remark"`
-	PIC                 []primitive.ObjectID `json:"pic" binding:"required,min=1"`
-	EstimatedCompleteAt time.Time            `json:"estimatedCompleteAt" binding:"required"`
+	ID                  primitive.ObjectID                `json:"_id" binding:"required"`
+	Description         string                            `json:"description"`
+	Remark              string                            `json:"remark"`
+	AreaMaterials       []database.SystemAreaMaterial    `json:"areaMaterials"`
+	Discount            database.SystemDiscount          `json:"discount"`
+	Quotation           primitive.ObjectID               `json:"quotation"`
+	PIC                 []primitive.ObjectID             `json:"pic" binding:"required,min=1"`
+	EstimatedCompleteAt time.Time                        `json:"estimatedCompleteAt" binding:"required"`
 }
 
 type ProjectListRequest struct {

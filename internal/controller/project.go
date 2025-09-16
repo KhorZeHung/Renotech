@@ -134,45 +134,9 @@ func projectDeleteHandler(c *gin.Context) {
 	utils.SendSuccessMessageResponse(c, "Project deleted successfully")
 }
 
-func projectToggleStarHandler(c *gin.Context) {
-	systemContext := utils.GetSystemContextFromGin(c)
-	systemContext.Logger.Info("Project star toggle started", zap.String("endpoint", "/api/v1/projects/:id/star"))
-	defer systemContext.Logger.Info("Project star toggle completed")
-
-	projectID, err := utils.ValidateObjectID(c.Param("id"))
-	if err != nil {
-		utils.SendErrorResponse(c, err)
-		return
-	}
-
-	var input model.ProjectToggleStarRequest
-	if err := c.ShouldBindJSON(&input); err != nil {
-		utils.SendErrorResponse(c, utils.SystemError(
-			enum.ErrorCodeValidation,
-			"Invalid request data",
-			map[string]interface{}{"details": err.Error()},
-		))
-		return
-	}
-
-	result, err := service.ProjectToggleStar(projectID, input.IsStared, systemContext)
-	if err != nil {
-		systemContext.Logger.Error("Project star toggle failed", zap.Error(err))
-		utils.SendErrorResponse(c, err)
-		return
-	}
-
-	systemContext.Logger.Info("Project star toggle successful",
-		zap.String("projectID", projectID.Hex()),
-		zap.Bool("isStared", result.IsStared),
-	)
-
-	utils.SendSuccessResponse(c, result)
-}
-
 func ProjectAPIInit(r *gin.Engine) {
 	// Project routes - Protected with tenant auth middleware
-	projectGroup := r.Group("/api/v1/projects")
+	projectGroup := r.Group("/api/v1/project")
 	projectGroup.Use(middleware.JWTAuthMiddleware())
 	{
 		projectGroup.POST("", projectCreateHandler)
@@ -180,6 +144,5 @@ func ProjectAPIInit(r *gin.Engine) {
 		projectGroup.POST("/list", projectListHandler)
 		projectGroup.PUT("", projectUpdateHandler)
 		projectGroup.DELETE("/:id", projectDeleteHandler)
-		projectGroup.PATCH("/:id/star", projectToggleStarHandler)
 	}
 }

@@ -16,8 +16,8 @@ type Project struct {
 	Discount            SystemDiscount       `bson:"discount" json:"discount"`
 	TotalDiscount       float64              `bson:"totalDiscount" json:"totalDiscount"`
 	TotalCharge         float64              `bson:"totalCharge" json:"totalCharge"`
+	TotalNettCharge     float64              `bson:"totalNettCharge" json:"totalNettCharge"`
 	TotalCost           float64              `bson:"totalCost" json:"totalCost"`
-	IsStared            bool                 `bson:"isStared" json:"isStared"`
 	CreatedAt           time.Time            `bson:"createdAt" json:"createdAt"`
 	CreatedBy           primitive.ObjectID   `bson:"createdBy" json:"createdBy"`
 	UpdatedAt           time.Time            `bson:"updatedAt" json:"updatedAt"`

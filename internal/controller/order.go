@@ -232,16 +232,16 @@ func orderDuplicateHandler(c *gin.Context) {
 
 func OrderAPIInit(r *gin.Engine) {
 	// Order routes - Protected with tenant auth middleware
-	orderGroup := r.Group("/api/v1/orders")
+	orderGroup := r.Group("/api/v1/order")
 	orderGroup.Use(middleware.JWTAuthMiddleware())
 	{
-		orderGroup.POST("/init", orderInitHandler)                    // Generate orders from project
-		orderGroup.POST("", orderCreateHandler)                      // Create new order
-		orderGroup.GET("/:id", orderGetHandler)                      // Get order by ID
-		orderGroup.POST("/list", orderListHandler)                   // List orders (with filters)
-		orderGroup.PUT("", orderUpdateHandler)                       // Update order
-		orderGroup.DELETE("/:id", orderDeleteHandler)                // Delete order
-		orderGroup.PATCH("/:id/status", orderStatusUpdateHandler)    // Update order status
-		orderGroup.POST("/:id/duplicate", orderDuplicateHandler)     // Duplicate order
+		orderGroup.POST("/init", orderInitHandler)                // Generate orders from project
+		orderGroup.POST("", orderCreateHandler)                   // Create new order
+		orderGroup.GET("/:id", orderGetHandler)                   // Get order by ID
+		orderGroup.POST("/list", orderListHandler)                // List orders (with filters)
+		orderGroup.PUT("", orderUpdateHandler)                    // Update order
+		orderGroup.DELETE("/:id", orderDeleteHandler)             // Delete order
+		orderGroup.PATCH("/:id/status", orderStatusUpdateHandler) // Update order status
+		orderGroup.POST("/:id/duplicate", orderDuplicateHandler)  // Duplicate order
 	}
 }
