@@ -244,6 +244,38 @@ func userAdminDeleteHandler(c *gin.Context) {
 	utils.SendSuccessMessageResponse(c, "User deleted successfully")
 }
 
+func userChangePasswordHandler(c *gin.Context) {
+	ctx := utils.GetSystemContextFromGin(c)
+	ctx.Logger.Info("User password change started", zap.String("endpoint", "/api/v1/user/change-password"))
+	defer ctx.Logger.Info("User password change completed")
+
+	var input model.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid request data",
+			map[string]interface{}{"details": err.Error()},
+		))
+		return
+	}
+
+	// Get user ID from context (set by JWT middleware)
+	userID := ctx.User.ID
+
+	result, err := service.UserChangePassword(&input, *userID, ctx)
+	if err != nil {
+		ctx.Logger.Error("User password change failed", zap.Error(err))
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	ctx.Logger.Info("User password change successful",
+		zap.String("userID", userID.Hex()),
+	)
+
+	utils.SendSuccessResponse(c, result)
+}
+
 func UserAPIInit(r *gin.Engine) {
 	// Tenant routes (for company users to manage users in their company) - Protected
 	tenantGroup := r.Group("/api/v1/user")
@@ -253,6 +285,7 @@ func UserAPIInit(r *gin.Engine) {
 		tenantGroup.POST("/list", userListHandler)
 		tenantGroup.PUT("", userUpdateHandler)
 		tenantGroup.DELETE("/:id", userDeleteHandler)
+		tenantGroup.POST("/change-password", userChangePasswordHandler)
 	}
 
 	r.POST("/api/v1/user", userCreateHandler)

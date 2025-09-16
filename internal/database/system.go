@@ -13,7 +13,10 @@ type SystemMedia struct {
 }
 
 type SystemAddress struct {
-	Street   string `bson:"street" json:"street"`
+	Line1    string `bson:"line1" json:"line1"`
+	Line2    string `bson:"line2" json:"line2"`
+	Line3    string `bson:"line3" json:"line3"`
+	City     string `bson:"city" json:"city"`
 	State    string `bson:"state" json:"state"`
 	Postcode string `bson:"postcode" json:"postcode"`
 }
