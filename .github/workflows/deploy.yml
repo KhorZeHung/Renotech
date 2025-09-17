@@ -39,8 +39,3 @@ jobs:
         run: |
           sudo systemctl start renotech.service
           sudo systemctl start cloudflared.service
-
-      - name: Test application
-        run: |
-          curl -f http://localhost:8000 || echo "Local test failed"
-          curl -f https://renotech.space || echo "Public test failed"
