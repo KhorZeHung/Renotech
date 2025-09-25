@@ -42,7 +42,7 @@ func userCreateHandler(c *gin.Context) {
 	utils.SendSuccessResponse(c, result)
 }
 
-func userGetHandler(c *gin.Context) {
+func userGetByIDHandler(c *gin.Context) {
 	ctx := utils.GetSystemContextFromGin(c)
 
 	userID, err := utils.ValidateObjectID(c.Param("id"))
@@ -52,6 +52,20 @@ func userGetHandler(c *gin.Context) {
 	}
 
 	result, err := service.UserTenantGetByID(userID, ctx)
+	if err != nil {
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	utils.SendSuccessResponse(c, result)
+}
+
+func userGetHandler(c *gin.Context) {
+	ctx := utils.GetSystemContextFromGin(c)
+
+	userID := ctx.User.ID
+
+	result, err := service.UserTenantGetByID(*userID, ctx)
 	if err != nil {
 		utils.SendErrorResponse(c, err)
 		return
@@ -281,6 +295,7 @@ func UserAPIInit(r *gin.Engine) {
 	tenantGroup := r.Group("/api/v1/user")
 	tenantGroup.Use(middleware.JWTAuthMiddleware())
 	{
+		tenantGroup.GET("", userGetHandler)
 		tenantGroup.GET("/:id", userGetHandler)
 		tenantGroup.POST("/list", userListHandler)
 		tenantGroup.PUT("", userUpdateHandler)

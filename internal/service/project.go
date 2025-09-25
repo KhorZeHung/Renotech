@@ -18,84 +18,6 @@ import (
 	"renotech.com.my/internal/utils"
 )
 
-func createActionLog(description string, systemContext *model.SystemContext) database.SystemActionLog {
-	return database.SystemActionLog{
-		Description: description,
-		Time:        time.Now(),
-		ByName:      systemContext.User.Username,
-		ById:        systemContext.User.ID,
-	}
-}
-
-func calculateProjectTotals(areaMaterials []database.SystemAreaMaterial, discount database.SystemDiscount) (float64, float64, float64, float64) {
-	var totalCost, totalCharge float64
-
-	// First, calculate individual material totals and sum them up
-	for i := range areaMaterials {
-		for j := range areaMaterials[i].Materials {
-			material := &areaMaterials[i].Materials[j]
-
-			// Calculate individual material totals
-			material.TotalCost = material.CostPerUnit * material.Quantity
-			material.TotalPrice = material.PricePerUnit * material.Quantity
-
-			// Add to overall totals
-			totalCost += material.TotalCost
-			totalCharge += material.TotalPrice
-		}
-	}
-
-	// Calculate discount
-	var totalDiscount float64
-	switch discount.Type {
-	case enum.DiscountTypeRate:
-		totalDiscount = totalCharge * (discount.Value / 100)
-	case enum.DiscountTypeAmount:
-		totalDiscount = discount.Value
-	default:
-		totalDiscount = 0
-	}
-
-	// Calculate net charge (total charge minus discount)
-	totalNettCharge := totalCharge - totalDiscount
-	if totalNettCharge < 0 {
-		totalNettCharge = 0
-	}
-
-	return totalCost, totalCharge, totalDiscount, totalNettCharge
-}
-
-func validatePICUsers(picIDs []primitive.ObjectID, systemContext *model.SystemContext) error {
-	if len(picIDs) == 0 {
-		return utils.SystemError(enum.ErrorCodeValidation, "At least one PIC is required", nil)
-	}
-
-	userCollection := systemContext.MongoDB.Collection("user")
-
-	for _, picID := range picIDs {
-		filter := bson.M{
-			"_id":       picID,
-			"company":   systemContext.User.Company,
-			"isDeleted": false,
-		}
-
-		count, err := userCollection.CountDocuments(context.Background(), filter)
-		if err != nil {
-			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate PIC user", nil)
-		}
-
-		if count == 0 {
-			return utils.SystemError(
-				enum.ErrorCodeValidation,
-				"PIC user not found or not in same company",
-				map[string]interface{}{"userId": picID.Hex()},
-			)
-		}
-	}
-
-	return nil
-}
-
 func projectCreateValidation(input *model.ProjectCreateRequest, systemContext *model.SystemContext) (*database.Quotation, error) {
 	// Validate quotation exists and belongs to company
 	quotationCollection := systemContext.MongoDB.Collection("quotation")
@@ -511,4 +433,82 @@ func executeProjectList(collection *mongo.Collection, filter bson.M, input model
 	}
 
 	return response, nil
+}
+
+func createActionLog(description string, systemContext *model.SystemContext) database.SystemActionLog {
+	return database.SystemActionLog{
+		Description: description,
+		Time:        time.Now(),
+		ByName:      systemContext.User.Username,
+		ById:        systemContext.User.ID,
+	}
+}
+
+func calculateProjectTotals(areaMaterials []database.SystemAreaMaterial, discount database.SystemDiscount) (float64, float64, float64, float64) {
+	var totalCost, totalCharge float64
+
+	// First, calculate individual material totals and sum them up
+	for i := range areaMaterials {
+		for j := range areaMaterials[i].Materials {
+			material := &areaMaterials[i].Materials[j]
+
+			// Calculate individual material totals
+			material.TotalCost = material.CostPerUnit * material.Quantity
+			material.TotalPrice = material.PricePerUnit * material.Quantity
+
+			// Add to overall totals
+			totalCost += material.TotalCost
+			totalCharge += material.TotalPrice
+		}
+	}
+
+	// Calculate discount
+	var totalDiscount float64
+	switch discount.Type {
+	case enum.DiscountTypeRate:
+		totalDiscount = totalCharge * (discount.Value / 100)
+	case enum.DiscountTypeAmount:
+		totalDiscount = discount.Value
+	default:
+		totalDiscount = 0
+	}
+
+	// Calculate net charge (total charge minus discount)
+	totalNettCharge := totalCharge - totalDiscount
+	if totalNettCharge < 0 {
+		totalNettCharge = 0
+	}
+
+	return totalCost, totalCharge, totalDiscount, totalNettCharge
+}
+
+func validatePICUsers(picIDs []primitive.ObjectID, systemContext *model.SystemContext) error {
+	if len(picIDs) == 0 {
+		return utils.SystemError(enum.ErrorCodeValidation, "At least one PIC is required", nil)
+	}
+
+	userCollection := systemContext.MongoDB.Collection("user")
+
+	for _, picID := range picIDs {
+		filter := bson.M{
+			"_id":       picID,
+			"company":   systemContext.User.Company,
+			"isDeleted": false,
+		}
+
+		count, err := userCollection.CountDocuments(context.Background(), filter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate PIC user", nil)
+		}
+
+		if count == 0 {
+			return utils.SystemError(
+				enum.ErrorCodeValidation,
+				"PIC user not found or not in same company",
+				map[string]interface{}{"userId": picID.Hex()},
+			)
+		}
+	}
+
+	return nil
 }

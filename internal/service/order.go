@@ -19,135 +19,6 @@ import (
 	"renotech.com.my/internal/utils"
 )
 
-func createOrderActionLog(description string, systemContext *model.SystemContext) database.SystemActionLog {
-	return database.SystemActionLog{
-		Description: description,
-		Time:        time.Now(),
-		ByName:      systemContext.User.Username,
-		ById:        systemContext.User.ID,
-	}
-}
-
-func generateUniquePONumber(systemContext *model.SystemContext) (string, error) {
-	collection := systemContext.MongoDB.Collection("order")
-	year := time.Now().Year()
-
-	// Find the highest PO number for current year
-	filter := bson.M{
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-		"poNumber": bson.M{
-			"$regex": fmt.Sprintf("^PO-%d-", year),
-		},
-	}
-
-	opts := options.Find().SetSort(bson.M{"poNumber": -1}).SetLimit(1)
-	cursor, err := collection.Find(context.Background(), filter, opts)
-	if err != nil {
-		return "", utils.SystemError(enum.ErrorCodeInternal, "Failed to generate PO number", nil)
-	}
-	defer cursor.Close(context.Background())
-
-	var lastOrder database.Order
-	nextNumber := 1
-
-	if cursor.Next(context.Background()) {
-		if err := cursor.Decode(&lastOrder); err == nil {
-			// Extract number from PO-YYYY-XXX format
-			parts := strings.Split(lastOrder.PONumber, "-")
-			if len(parts) == 3 {
-				if num, err := strconv.Atoi(parts[2]); err == nil {
-					nextNumber = num + 1
-				}
-			}
-		}
-	}
-
-	return fmt.Sprintf("PO-%d-%03d", year, nextNumber), nil
-}
-
-func populateSupplierFromSystem(supplierID primitive.ObjectID, systemContext *model.SystemContext) (*database.OrderSupplier, error) {
-	supplierCollection := systemContext.MongoDB.Collection("supplier")
-
-	filter := bson.M{
-		"_id":       supplierID,
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-	}
-
-	var supplier database.Supplier
-	err := supplierCollection.FindOne(context.Background(), filter).Decode(&supplier)
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Supplier not found", nil)
-	}
-
-	// Get the primary address (first one if available)
-	var address database.SystemAddress
-	if len(supplier.OfficeAddress) > 0 {
-		address = supplier.OfficeAddress[0]
-	}
-
-	return &database.OrderSupplier{
-		ID:      supplier.ID,
-		Name:    supplier.Name,
-		Contact: supplier.Contact,
-		Email:   supplier.Email,
-		Logo:    supplier.Logo,
-		Address: address,
-	}, nil
-}
-
-func calculateOrderTotals(items []database.OrderItem, taxRate float64) (float64, float64, float64) {
-	var subTotal float64
-
-	// Calculate individual item totals and sum them up
-	for i := range items {
-		items[i].TotalPrice = items[i].UnitPrice * items[i].Quantity
-		subTotal += items[i].TotalPrice
-	}
-
-	// Calculate tax
-	taxAmount := subTotal * (taxRate / 100)
-	totalCharge := subTotal + taxAmount
-
-	return subTotal, taxAmount, totalCharge
-}
-
-func aggregateMaterialsBySupplier(areaMaterials []database.SystemAreaMaterial) map[string][]database.SystemAreaMaterialDetail {
-	supplierMaterials := make(map[string][]database.SystemAreaMaterialDetail)
-
-	for _, areaMaterial := range areaMaterials {
-		for _, materialDetail := range areaMaterial.Materials {
-			// Process main material
-			addMaterialToSupplierMap(supplierMaterials, materialDetail, areaMaterial.Area.Name)
-
-			// Process template materials recursively
-			addTemplateMaterials(supplierMaterials, materialDetail.Template, areaMaterial.Area.Name)
-		}
-	}
-
-	return supplierMaterials
-}
-
-func addMaterialToSupplierMap(supplierMap map[string][]database.SystemAreaMaterialDetail, material database.SystemAreaMaterialDetail, areaName string) {
-	if material.Supplier == nil {
-		// Handle materials without supplier
-		supplierKey := "no-supplier"
-		supplierMap[supplierKey] = append(supplierMap[supplierKey], material)
-	} else {
-		supplierKey := material.Supplier.Hex()
-		supplierMap[supplierKey] = append(supplierMap[supplierKey], material)
-	}
-}
-
-func addTemplateMaterials(supplierMap map[string][]database.SystemAreaMaterialDetail, templateMaterials []database.SystemAreaMaterialDetail, areaName string) {
-	for _, templateMaterial := range templateMaterials {
-		addMaterialToSupplierMap(supplierMap, templateMaterial, areaName)
-		// Recursively add nested templates
-		addTemplateMaterials(supplierMap, templateMaterial.Template, areaName)
-	}
-}
-
 func OrderInit(input *model.OrderInitRequest, systemContext *model.SystemContext) (*model.OrderInitResponse, error) {
 	// Get the project
 	project, err := ProjectGetByID(input.ProjectID, systemContext)
@@ -759,4 +630,133 @@ func executeOrderList(collection *mongo.Collection, filter bson.M, input model.O
 	}
 
 	return response, nil
+}
+
+func createOrderActionLog(description string, systemContext *model.SystemContext) database.SystemActionLog {
+	return database.SystemActionLog{
+		Description: description,
+		Time:        time.Now(),
+		ByName:      systemContext.User.Username,
+		ById:        systemContext.User.ID,
+	}
+}
+
+func generateUniquePONumber(systemContext *model.SystemContext) (string, error) {
+	collection := systemContext.MongoDB.Collection("order")
+	year := time.Now().Year()
+
+	// Find the highest PO number for current year
+	filter := bson.M{
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+		"poNumber": bson.M{
+			"$regex": fmt.Sprintf("^PO-%d-", year),
+		},
+	}
+
+	opts := options.Find().SetSort(bson.M{"poNumber": -1}).SetLimit(1)
+	cursor, err := collection.Find(context.Background(), filter, opts)
+	if err != nil {
+		return "", utils.SystemError(enum.ErrorCodeInternal, "Failed to generate PO number", nil)
+	}
+	defer cursor.Close(context.Background())
+
+	var lastOrder database.Order
+	nextNumber := 1
+
+	if cursor.Next(context.Background()) {
+		if err := cursor.Decode(&lastOrder); err == nil {
+			// Extract number from PO-YYYY-XXX format
+			parts := strings.Split(lastOrder.PONumber, "-")
+			if len(parts) == 3 {
+				if num, err := strconv.Atoi(parts[2]); err == nil {
+					nextNumber = num + 1
+				}
+			}
+		}
+	}
+
+	return fmt.Sprintf("PO-%d-%03d", year, nextNumber), nil
+}
+
+func populateSupplierFromSystem(supplierID primitive.ObjectID, systemContext *model.SystemContext) (*database.OrderSupplier, error) {
+	supplierCollection := systemContext.MongoDB.Collection("supplier")
+
+	filter := bson.M{
+		"_id":       supplierID,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	var supplier database.Supplier
+	err := supplierCollection.FindOne(context.Background(), filter).Decode(&supplier)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Supplier not found", nil)
+	}
+
+	// Get the primary address (first one if available)
+	var address database.SystemAddress
+	if len(supplier.OfficeAddress) > 0 {
+		address = supplier.OfficeAddress[0]
+	}
+
+	return &database.OrderSupplier{
+		ID:      supplier.ID,
+		Name:    supplier.Name,
+		Contact: supplier.Contact,
+		Email:   supplier.Email,
+		Logo:    supplier.Logo,
+		Address: address,
+	}, nil
+}
+
+func calculateOrderTotals(items []database.OrderItem, taxRate float64) (float64, float64, float64) {
+	var subTotal float64
+
+	// Calculate individual item totals and sum them up
+	for i := range items {
+		items[i].TotalPrice = items[i].UnitPrice * items[i].Quantity
+		subTotal += items[i].TotalPrice
+	}
+
+	// Calculate tax
+	taxAmount := subTotal * (taxRate / 100)
+	totalCharge := subTotal + taxAmount
+
+	return subTotal, taxAmount, totalCharge
+}
+
+func aggregateMaterialsBySupplier(areaMaterials []database.SystemAreaMaterial) map[string][]database.SystemAreaMaterialDetail {
+	supplierMaterials := make(map[string][]database.SystemAreaMaterialDetail)
+
+	for _, areaMaterial := range areaMaterials {
+		for _, materialDetail := range areaMaterial.Materials {
+			// Process main material
+			addMaterialToSupplierMap(supplierMaterials, materialDetail, areaMaterial.Area.Name)
+
+			// Process template materials recursively
+			addTemplateMaterials(supplierMaterials, materialDetail.Template, areaMaterial.Area.Name)
+		}
+	}
+
+	return supplierMaterials
+}
+
+func addMaterialToSupplierMap(supplierMap map[string][]database.SystemAreaMaterialDetail, material database.SystemAreaMaterialDetail, areaName string) {
+	if material.Supplier == nil {
+		// Handle materials without supplier
+		supplierKey := "no-supplier"
+		supplierMap[supplierKey] = append(supplierMap[supplierKey], material)
+	} else {
+		supplierKey := material.Supplier.Hex()
+		supplierMap[supplierKey] = append(supplierMap[supplierKey], material)
+	}
+}
+
+func addTemplateMaterials(supplierMap map[string][]database.SystemAreaMaterialDetail, templateMaterials []database.SystemAreaMaterialDetail, areaName string) {
+	for _, templateMaterial := range templateMaterials {
+		addMaterialToSupplierMap(supplierMap, templateMaterial, areaName)
+		// Recursively add nested templates
+		addTemplateMaterials(supplierMap, templateMaterial.Template, areaName)
+	}
 }

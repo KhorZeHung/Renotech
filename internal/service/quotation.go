@@ -18,130 +18,6 @@ import (
 	"renotech.com.my/internal/utils"
 )
 
-func generateUniqueQuotationName(baseName string, systemContext *model.SystemContext) (string, error) {
-	collection := systemContext.MongoDB.Collection("quotation")
-
-	// Try original name first
-	filter := bson.M{
-		"name":      baseName,
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-	}
-
-	count, err := collection.CountDocuments(context.Background(), filter)
-	if err != nil {
-		return "", utils.SystemError(enum.ErrorCodeInternal, "Failed to check name uniqueness", nil)
-	}
-
-	if count == 0 {
-		return baseName, nil
-	}
-
-	// If name exists, try with numbers
-	for i := 1; i <= 100; i++ {
-		newName := fmt.Sprintf("%s (%d)", baseName, i)
-		filter["name"] = newName
-
-		count, err := collection.CountDocuments(context.Background(), filter)
-		if err != nil {
-			return "", utils.SystemError(enum.ErrorCodeInternal, "Failed to check name uniqueness", nil)
-		}
-
-		if count == 0 {
-			return newName, nil
-		}
-	}
-
-	return "", utils.SystemError(enum.ErrorCodeValidation, "Unable to generate unique name", nil)
-}
-
-func validateMaterialDetail(materialDetail database.SystemAreaMaterialDetail, materialCollection *mongo.Collection, systemContext *model.SystemContext) error {
-	// Only validate if material ID is provided
-	if materialDetail.Material != nil {
-		// Check if material exists, is active, not deleted, and belongs to company
-		filter := bson.M{
-			"_id":       *materialDetail.Material,
-			"company":   systemContext.User.Company,
-			"status":    enum.MaterialStatusActive,
-			"isDeleted": false,
-		}
-
-		count, err := materialCollection.CountDocuments(context.Background(), filter)
-		if err != nil {
-			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate material", nil)
-		}
-
-		if count == 0 {
-			return utils.SystemError(
-				enum.ErrorCodeValidation,
-				"Material not found or not active",
-				map[string]interface{}{"materialId": materialDetail.Material.Hex()},
-			)
-		}
-	}
-
-	// Recursively validate template materials
-	for _, templateMaterial := range materialDetail.Template {
-		if err := validateMaterialDetail(templateMaterial, materialCollection, systemContext); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func validateAreaMaterials(areaMaterials []database.SystemAreaMaterial, systemContext *model.SystemContext) error {
-	materialCollection := systemContext.MongoDB.Collection("material")
-
-	for _, areaMaterial := range areaMaterials {
-		for _, materialDetail := range areaMaterial.Materials {
-			if err := validateMaterialDetail(materialDetail, materialCollection, systemContext); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func calculateQuotationTotals(areaMaterials []database.SystemAreaMaterial, discount database.SystemDiscount) (float64, float64, float64, float64) {
-	var totalCost, totalCharge float64
-
-	// First, calculate individual material totals and sum them up
-	for i := range areaMaterials {
-		for j := range areaMaterials[i].Materials {
-			material := &areaMaterials[i].Materials[j]
-			
-			// Calculate individual material totals
-			material.TotalCost = material.CostPerUnit * material.Quantity
-			material.TotalPrice = material.PricePerUnit * material.Quantity
-			
-			// Add to overall totals
-			totalCost += material.TotalCost
-			totalCharge += material.TotalPrice
-		}
-	}
-
-	// Calculate discount
-	var totalDiscount float64
-	switch discount.Type {
-	case enum.DiscountTypeRate:
-		totalDiscount = totalCharge * (discount.Value / 100)
-	case enum.DiscountTypeAmount:
-		totalDiscount = discount.Value
-	default:
-		totalDiscount = 0
-	}
-
-	// Calculate net charge (total charge minus discount)
-	totalNettCharge := totalCharge - totalDiscount
-	if totalNettCharge < 0 {
-		totalNettCharge = 0
-	}
-
-	return totalCost, totalCharge, totalDiscount, totalNettCharge
-}
-
 func quotationCreateValidation(input *database.Quotation, systemContext *model.SystemContext) error {
 	// Validate folder exists and belongs to company
 	folderCollection := systemContext.MongoDB.Collection("folder")
@@ -532,4 +408,128 @@ func executeQuotationList(collection *mongo.Collection, filter bson.M, input mod
 	}
 
 	return response, nil
+}
+
+func generateUniqueQuotationName(baseName string, systemContext *model.SystemContext) (string, error) {
+	collection := systemContext.MongoDB.Collection("quotation")
+
+	// Try original name first
+	filter := bson.M{
+		"name":      baseName,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	count, err := collection.CountDocuments(context.Background(), filter)
+	if err != nil {
+		return "", utils.SystemError(enum.ErrorCodeInternal, "Failed to check name uniqueness", nil)
+	}
+
+	if count == 0 {
+		return baseName, nil
+	}
+
+	// If name exists, try with numbers
+	for i := 1; i <= 100; i++ {
+		newName := fmt.Sprintf("%s (%d)", baseName, i)
+		filter["name"] = newName
+
+		count, err := collection.CountDocuments(context.Background(), filter)
+		if err != nil {
+			return "", utils.SystemError(enum.ErrorCodeInternal, "Failed to check name uniqueness", nil)
+		}
+
+		if count == 0 {
+			return newName, nil
+		}
+	}
+
+	return "", utils.SystemError(enum.ErrorCodeValidation, "Unable to generate unique name", nil)
+}
+
+func validateMaterialDetail(materialDetail database.SystemAreaMaterialDetail, materialCollection *mongo.Collection, systemContext *model.SystemContext) error {
+	// Only validate if material ID is provided
+	if materialDetail.Material != nil {
+		// Check if material exists, is active, not deleted, and belongs to company
+		filter := bson.M{
+			"_id":       *materialDetail.Material,
+			"company":   systemContext.User.Company,
+			"status":    enum.MaterialStatusActive,
+			"isDeleted": false,
+		}
+
+		count, err := materialCollection.CountDocuments(context.Background(), filter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate material", nil)
+		}
+
+		if count == 0 {
+			return utils.SystemError(
+				enum.ErrorCodeValidation,
+				"Material not found or not active",
+				map[string]interface{}{"materialId": materialDetail.Material.Hex()},
+			)
+		}
+	}
+
+	// Recursively validate template materials
+	for _, templateMaterial := range materialDetail.Template {
+		if err := validateMaterialDetail(templateMaterial, materialCollection, systemContext); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateAreaMaterials(areaMaterials []database.SystemAreaMaterial, systemContext *model.SystemContext) error {
+	materialCollection := systemContext.MongoDB.Collection("material")
+
+	for _, areaMaterial := range areaMaterials {
+		for _, materialDetail := range areaMaterial.Materials {
+			if err := validateMaterialDetail(materialDetail, materialCollection, systemContext); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func calculateQuotationTotals(areaMaterials []database.SystemAreaMaterial, discount database.SystemDiscount) (float64, float64, float64, float64) {
+	var totalCost, totalCharge float64
+
+	// First, calculate individual material totals and sum them up
+	for i := range areaMaterials {
+		for j := range areaMaterials[i].Materials {
+			material := &areaMaterials[i].Materials[j]
+
+			// Calculate individual material totals
+			material.TotalCost = material.CostPerUnit * material.Quantity
+			material.TotalPrice = material.PricePerUnit * material.Quantity
+
+			// Add to overall totals
+			totalCost += material.TotalCost
+			totalCharge += material.TotalPrice
+		}
+	}
+
+	// Calculate discount
+	var totalDiscount float64
+	switch discount.Type {
+	case enum.DiscountTypeRate:
+		totalDiscount = totalCharge * (discount.Value / 100)
+	case enum.DiscountTypeAmount:
+		totalDiscount = discount.Value
+	default:
+		totalDiscount = 0
+	}
+
+	// Calculate net charge (total charge minus discount)
+	totalNettCharge := totalCharge - totalDiscount
+	if totalNettCharge < 0 {
+		totalNettCharge = 0
+	}
+
+	return totalCost, totalCharge, totalDiscount, totalNettCharge
 }
