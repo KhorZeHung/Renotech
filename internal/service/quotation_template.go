@@ -195,7 +195,7 @@ func QuotationTemplateDelete(templateID primitive.ObjectID, systemContext *model
 	return nil
 }
 
-func QuotationTemplatePreview(input *model.QuotationTemplatePreviewRequest, systemContext *model.SystemContext) (string, error) {
+func QuotationTemplatePreview(input *model.QuotationTemplatePreviewRequest, forPreview bool, systemContext *model.SystemContext) (string, error) {
 	template, err := QuotationTemplateGetByID(input.TemplateID, systemContext)
 	if err != nil {
 		return "", err
@@ -240,6 +240,11 @@ func QuotationTemplatePreview(input *model.QuotationTemplatePreviewRequest, syst
 		html = fmt.Sprintf("<style>%s</style>%s", template.CSSContent, html)
 	}
 
+	// Wrap in A4 preview container if forPreview is true
+	if forPreview {
+		html = quotationTemplateWrapForPreview(html)
+	}
+
 	return html, nil
 }
 
@@ -249,49 +254,10 @@ func QuotationTemplateGenerate(input *model.QuotationTemplatePreviewRequest, sys
 		return nil, "", err
 	}
 
-	// Check if all required variables are provided
-	for _, variable := range template.VariableList {
-		if _, exists := input.Variables[variable]; !exists {
-			return nil, "", utils.SystemError(enum.ErrorCodeValidation,
-				fmt.Sprintf("Variable '%s' is required", variable), nil)
-		}
-	}
+	html, previewErr := QuotationTemplatePreview(input, false, systemContext)
 
-	// Generate dynamic HTML from structured areas
-	areaSectionHTML := quotationTemplateGenerateAreaSectionHTML(input.Areas, template.AreaHTMLContent)
-
-	// Generate term conditions HTML
-	termConditionHTML := quotationTemplateGenerateTermConditionHTML(input.TermConditions)
-
-	html := template.MainHTMLContent
-
-	// Replace system-generated placeholders with double square brackets
-	html = strings.ReplaceAll(html, "[[areaSection]]", areaSectionHTML)
-	html = strings.ReplaceAll(html, "[[termConditionSection]]", termConditionHTML)
-
-	// Replace user variables with formatted values
-	for variable, value := range input.Variables {
-		placeholder := fmt.Sprintf("{{%s}}", variable)
-		var processedValue string
-
-		// Check if this is a price-related variable
-		if quotationTemplateIsPriceVariable(variable) {
-			processedValue = utils.FormatPriceString(value, 2)
-		} else {
-			processedValue = fmt.Sprintf("%v", value)
-		}
-
-		html = strings.ReplaceAll(html, placeholder, processedValue)
-	}
-
-	if template.CSSContent != "" {
-		html = fmt.Sprintf(`<!DOCTYPE html>
-<html>
-<head>
-<style>%s</style>
-</head>
-<body>%s</body>
-</html>`, template.CSSContent, html)
+	if previewErr != nil {
+		return nil, "", previewErr
 	}
 
 	ctx, cancel := chromedp.NewContext(context.Background())
@@ -433,4 +399,81 @@ func quotationTemplateIsPriceVariable(variableName string) bool {
 		}
 	}
 	return false
+}
+
+// wrapForPreview wraps HTML content in A4-sized container for preview display
+func quotationTemplateWrapForPreview(content string) string {
+	previewCSS := `
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+		body {
+			margin: 0;
+			padding: 20px;
+			background: #f5f5f5;
+			font-family: Arial, sans-serif;
+		}
+		.a4-preview-container {
+			max-width: 890px;
+			margin: 0 auto;
+		}
+		.a4-page {
+			width: 794px;
+			min-height: 1123px;
+			padding: 48px;
+			margin: 0 auto 20px;
+			background: white;
+			box-shadow: 0 0 10px rgba(0,0,0,0.1);
+			position: relative;
+		}
+		.a4-page:last-child {
+			margin-bottom: 0;
+		}
+		/* Support for page breaks */
+		.page-break,
+		*[style*="page-break-after: always"],
+		*[style*="page-break-after:always"] {
+			page-break-after: always;
+			break-after: page;
+		}
+		@media print {
+			body {
+				background: white;
+				padding: 0;
+			}
+			.a4-preview-container {
+				max-width: none;
+			}
+			.a4-page {
+				box-shadow: none;
+				margin: 0;
+				padding: 0;
+				page-break-after: always;
+			}
+			.a4-page:last-child {
+				page-break-after: auto;
+			}
+		}
+	</style>
+	`
+
+	wrappedHTML := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Quotation Preview</title>
+	%s
+</head>
+<body>
+	<div class="a4-preview-container">
+		<div class="a4-page">
+			%s
+		</div>
+	</div>
+</body>
+</html>`, previewCSS, content)
+
+	return wrappedHTML
 }

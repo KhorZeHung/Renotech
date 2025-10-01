@@ -152,7 +152,7 @@ func quotationTemplatePreviewHandler(c *gin.Context) {
 		return
 	}
 
-	html, err := service.QuotationTemplatePreview(&input, systemContext)
+	html, err := service.QuotationTemplatePreview(&input, true, systemContext)
 	if err != nil {
 		utils.SendErrorResponse(c, err)
 		return
