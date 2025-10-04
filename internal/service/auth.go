@@ -119,7 +119,7 @@ func AuthForgotPassword(input *model.ForgotPasswordRequest, systemContext *model
 
 	// Store reset token in separate collection
 	tokenCollection := systemContext.MongoDB.Collection("password_reset_token")
-	
+
 	// First, mark any existing tokens for this email as used
 	_, _ = tokenCollection.UpdateMany(
 		context.Background(),
@@ -156,18 +156,13 @@ func AuthForgotPassword(input *model.ForgotPasswordRequest, systemContext *model
 }
 
 func authResetPasswordValidation(input *model.ResetPasswordRequest, systemContext *model.SystemContext) (*database.User, *database.PasswordResetToken, error) {
-	// Check if passwords match
-	if input.NewPassword != input.ConfirmPassword {
-		return nil, nil, utils.SystemError(enum.ErrorCodeValidation, "Passwords do not match", nil)
-	}
-
 	// Find reset token
 	tokenCollection := systemContext.MongoDB.Collection("password_reset_token")
 	filter := bson.M{
 		"email":      input.Email,
 		"resetToken": input.Token,
 		"expiresAt":  bson.M{"$gt": time.Now()}, // Token not expired
-		"isUsed":     false,                      // Token not used
+		"isUsed":     false,                     // Token not used
 	}
 
 	var resetToken database.PasswordResetToken
@@ -235,5 +230,77 @@ func AuthResetPassword(input *model.ResetPasswordRequest, systemContext *model.S
 
 	return &model.ResetPasswordResponse{
 		Message: "Password has been reset successfully",
+	}, nil
+}
+
+func authResendValidation(input *model.ForgotPasswordRequest, systemContext *model.SystemContext) (*database.PasswordResetToken, error) {
+	tokenCollection := systemContext.MongoDB.Collection("password_reset_token")
+
+	// Find existing non-used token for this email
+	filter := bson.M{
+		"email":  input.Email,
+		"isUsed": false,
+	}
+
+	var resetToken database.PasswordResetToken
+	err := tokenCollection.FindOne(context.Background(), filter).Decode(&resetToken)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeNotFound, "No pending password reset request found for this email", nil)
+	}
+
+	return &resetToken, nil
+}
+
+func AuthResend(input *model.ForgotPasswordRequest, systemContext *model.SystemContext) (*model.ForgotPasswordResponse, error) {
+	// Validate if pending reset token exists
+	oldToken, err := authResendValidation(input, systemContext)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate new secure random token
+	tokenBytes := make([]byte, 32)
+	_, err = rand.Read(tokenBytes)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to generate reset token", nil)
+	}
+	resetToken := hex.EncodeToString(tokenBytes)
+
+	// Set token expiry to 5 minutes from now
+	tokenExpiry := time.Now().Add(5 * time.Minute)
+
+	tokenCollection := systemContext.MongoDB.Collection("password_reset_token")
+
+	// Delete old token document
+	_, err = tokenCollection.DeleteOne(context.Background(), bson.M{"_id": oldToken.ID})
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to remove old reset token", nil)
+	}
+
+	// Create new reset token record
+	resetTokenDoc := &database.PasswordResetToken{
+		Email:      input.Email,
+		ResetToken: resetToken,
+		ExpiresAt:  tokenExpiry,
+		CreatedAt:  time.Now(),
+		IsUsed:     false,
+	}
+
+	_, err = tokenCollection.InsertOne(context.Background(), resetTokenDoc)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to save reset token", nil)
+	}
+
+	// Resend reset email
+	err = utils.SendPasswordResetEmail(input.Email, resetToken)
+	if err != nil {
+		systemContext.Logger.Error("Failed to resend password reset email", zap.Error(err), zap.String("email", input.Email))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to send reset email", nil)
+	}
+
+	systemContext.Logger.Info("Password reset email resent", zap.String("email", input.Email))
+
+	return &model.ForgotPasswordResponse{
+		Message: "Password reset email has been resent to your email address",
 	}, nil
 }
