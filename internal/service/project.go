@@ -474,11 +474,16 @@ func executeProjectList(collection *mongo.Collection, filter bson.M, input model
 	skip := (page - 1) * limit
 	totalPages := int(math.Ceil(float64(total) / float64(limit)))
 
-	// Build sort options
-	sortOptions := input.Sort
-
-	if len(sortOptions) < 1 {
-		sortOptions = bson.M{"createdAt": 1}
+	// Build sort options - use bson.D to preserve order for multiple sort fields
+	var sortOptions bson.D
+	if len(input.Sort) > 0 {
+		// Convert bson.M to bson.D to preserve field order
+		for key, value := range input.Sort {
+			sortOptions = append(sortOptions, bson.E{Key: key, Value: value})
+		}
+	} else {
+		// Default sort by createdAt ascending
+		sortOptions = bson.D{{Key: "createdAt", Value: 1}}
 	}
 
 	// Create find options
