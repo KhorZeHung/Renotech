@@ -96,8 +96,38 @@ func resetPasswordHandler(c *gin.Context) {
 	utils.SendSuccessResponse(c, result)
 }
 
+func resendPasswordResetHandler(c *gin.Context) {
+	systemContext := utils.GetSystemContextFromGin(c)
+	systemContext.Logger.Info("Resend password reset started", zap.String("endpoint", "/api/v1/auth/resend-password-reset"))
+	defer systemContext.Logger.Info("Resend password reset completed")
+
+	var input model.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid request data",
+			map[string]interface{}{"details": err.Error()},
+		))
+		return
+	}
+
+	result, err := service.AuthResend(&input, systemContext)
+	if err != nil {
+		systemContext.Logger.Error("Resend password reset failed", zap.Error(err))
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	systemContext.Logger.Info("Resend password reset email sent",
+		zap.String("email", input.Email),
+	)
+
+	utils.SendSuccessResponse(c, result)
+}
+
 func AuthAPIInit(r *gin.Engine) {
 	r.POST("/api/v1/auth/login", loginHandler)
 	r.POST("/api/v1/auth/forgot-password", forgotPasswordHandler)
+	r.POST("/api/v1/auth/resend", resendPasswordResetHandler)
 	r.POST("/api/v1/auth/reset-password", resetPasswordHandler)
 }

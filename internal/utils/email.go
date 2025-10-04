@@ -77,7 +77,7 @@ func SendEmail(emailData *EmailData) error {
 }
 
 func SendPasswordResetEmail(email, resetToken string) error {
-	resetLink := fmt.Sprintf("%s/reset-password?token=%s&email=%s",
+	resetLink := fmt.Sprintf("%s/auth/reset-password?token=%s&email=%s",
 		GetEnvString("FRONTEND_URL", "https://app.renotech.space"),
 		resetToken,
 		email,
@@ -97,6 +97,10 @@ func SendPasswordResetEmail(email, resetToken string) error {
             margin: 0; 
             padding: 0; 
             background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            -webkit-user-select: none; 
+            -moz-user-select: none;    
+            -ms-user-select: none;     
+            user-select: none;
         }
         .container { 
             max-width: 600px; 
@@ -105,6 +109,7 @@ func SendPasswordResetEmail(email, resetToken string) error {
             background-color: #ffffff;
             border-radius: 12px;
             box-shadow: 0 8px 32px rgba(33, 150, 243, 0.1);
+            border : 2px solid rgba(33, 150, 243, 0.1);
         }
         .header { 
             background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%); 
@@ -124,10 +129,10 @@ func SendPasswordResetEmail(email, resetToken string) error {
             padding: 30px 20px; 
             background-color: #ffffff; 
         }
-        .content h2 {
+        .content h1 {
             color: #1976d2;
             margin-top: 0;
-            font-size: 24px;
+            font-size: 30px;
             font-weight: 500;
         }
         .content p {
@@ -149,6 +154,7 @@ func SendPasswordResetEmail(email, resetToken string) error {
             transition: all 0.3s ease;
         }
         .button:hover {
+            color: white; 
             background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
             box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
         }
@@ -194,35 +200,26 @@ func SendPasswordResetEmail(email, resetToken string) error {
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🔧 RenoTech - Password Reset</h1>
-        </div>
         <div class="content">
-            <h2>🔐 Reset Your Password</h2>
-            <p>Hello there! 👋</p>
+            <h1>Forgot your password?</h1>
             <p>We received a request to reset your password for your RenoTech account associated with this email address.</p>
+            <p>To reset your password, click the button below.</p>
             
             <hr class="divider">
-            
-            <p>Click the button below to reset your password:</p>
             <center>
-                <a href="{{.ResetLink}}" class="button">🔄 Reset Password</a>
+                <a href="{{.ResetLink}}" class="button">Reset Password</a>
             </center>
             
-            <p>Or copy and paste this link into your browser:</p>
-            <div class="link-box">{{.ResetLink}}</div>
-            
             <div class="warning">
-                <strong>⚠️ Important:</strong> This link will expire in 5 minutes for security reasons.
+                <strong>Important:</strong> This link will expire in 5 minutes for security reasons.
             </div>
             
             <hr class="divider">
             
             <p>If you didn't request this password reset, please ignore this email or contact support if you have concerns.</p>
-            <p>Best regards,<br><strong>The RenoTech Team</strong> 🏗️</p>
         </div>
         <div class="footer">
-            <p>📧 This is an automated message. Please do not reply to this email.</p>
+            <p>This is an automated message. Please do not reply to this email.</p>
             <p>© 2025 RenoTech. All rights reserved.</p>
         </div>
     </div>
