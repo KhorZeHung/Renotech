@@ -12,7 +12,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string `json:"token"`
+	Token string              `json:"token"`
+	User  database.UserSecure `json:"user"`
 }
 
 type JWTClaims struct {
