@@ -59,7 +59,7 @@ func AuthLogin(input *model.LoginRequest, systemContext *model.SystemContext) (*
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	// Get JWT secret from environment or use default
-	secret := utils.GetEnvString("JWT_SECRET", "your-secret-key")
+	secret := utils.GetEnvString("JWT_SECRET", "secret")
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to generate token", nil)
@@ -75,8 +75,13 @@ func AuthLogin(input *model.LoginRequest, systemContext *model.SystemContext) (*
 	}
 	_, _ = collection.UpdateOne(context.Background(), filter, update)
 
+	var doc database.UserSecure
+
+	_ = collection.FindOne(context.Background(), filter).Decode(&doc)
+
 	return &model.LoginResponse{
 		Token: tokenString,
+		User:  doc,
 	}, nil
 }
 
