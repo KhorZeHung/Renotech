@@ -28,6 +28,7 @@ type User struct {
 }
 
 type UserSecure struct {
+	ID             *primitive.ObjectID `bson:"_id,omitempty" json:"_id,omitempty"`
 	Username       string              `bson:"username" json:"username"`
 	Email          string              `bson:"email" json:"email"`
 	Contact        string              `bson:"contact" json:"contact"`
