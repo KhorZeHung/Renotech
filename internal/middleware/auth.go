@@ -38,7 +38,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, utils.SystemError(enum.ErrorCodeUnauthorized, "Invalid token signing method", nil)
 			}
-			secret := utils.GetEnvString("JWT_SECRET", "your-secret-key")
+			secret := utils.GetEnvString("JWT_SECRET", "e86638cfe6ad7f4bb592b7dfb72cf248a44a3b55eee6c6d6224bd4b2c9509b8f549a6db4d8e449907b300a9a07791f6bef4039f79a11b414dd6fe744bc34288e")
 			return []byte(secret), nil
 		})
 
@@ -87,7 +87,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 func AuthenticateUser(systemContext *model.SystemContext, userID primitive.ObjectID) error {
 	userCollection := systemContext.MongoDB.Collection("user")
 	var user database.User
-	
+
 	err := userCollection.FindOne(context.Background(), bson.M{
 		"_id":       userID,
 		"isDeleted": false,
