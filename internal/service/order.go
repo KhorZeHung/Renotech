@@ -361,6 +361,17 @@ func OrderGetByID(orderID primitive.ObjectID, systemContext *model.SystemContext
 }
 
 func OrderList(input model.OrderListRequest, systemContext *model.SystemContext) (*model.OrderListResponse, error) {
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return &model.OrderListResponse{
+			Data:       []bson.M{},
+			Page:       1,
+			Limit:      10,
+			Total:      0,
+			TotalPages: 0,
+		}, nil
+	}
+
 	collection := systemContext.MongoDB.Collection("order")
 
 	// Build base filter

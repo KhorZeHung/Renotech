@@ -193,6 +193,17 @@ func SupplierTenantGetByID(supplierID primitive.ObjectID, systemContext *model.S
 }
 
 func SupplierTenantList(input model.SupplierListRequest, systemContext *model.SystemContext) (*model.SupplierListResponse, error) {
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return &model.SupplierListResponse{
+			Data:       []bson.M{},
+			Page:       1,
+			Limit:      10,
+			Total:      0,
+			TotalPages: 0,
+		}, nil
+	}
+
 	collection := systemContext.MongoDB.Collection("supplier")
 
 	// Build base filter - tenant can only see their company's suppliers

@@ -225,6 +225,17 @@ func QuotationGetByID(quotationID primitive.ObjectID, systemContext *model.Syste
 }
 
 func QuotationList(input model.QuotationListRequest, systemContext *model.SystemContext) (*model.QuotationListResponse, error) {
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return &model.QuotationListResponse{
+			Data:       []bson.M{},
+			Page:       1,
+			Limit:      10,
+			Total:      0,
+			TotalPages: 0,
+		}, nil
+	}
+
 	collection := systemContext.MongoDB.Collection("quotation")
 
 	// Build base filter

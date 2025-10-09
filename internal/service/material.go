@@ -447,6 +447,17 @@ func MaterialTenantGetByID(materialID primitive.ObjectID, systemContext *model.S
 }
 
 func MaterialTenantList(input model.MaterialListRequest, systemContext *model.SystemContext) (*model.MaterialListResponse, error) {
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return &model.MaterialListResponse{
+			Data:       []bson.M{},
+			Page:       1,
+			Limit:      10,
+			Total:      0,
+			TotalPages: 0,
+		}, nil
+	}
+
 	collection := systemContext.MongoDB.Collection("material")
 
 	// Build base filter - tenant can only see their company's materials
