@@ -288,6 +288,17 @@ func ProjectGetByID(projectID primitive.ObjectID, systemContext *model.SystemCon
 }
 
 func ProjectList(input model.ProjectListRequest, systemContext *model.SystemContext) (*model.ProjectListResponse, error) {
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return &model.ProjectListResponse{
+			Data:       []bson.M{},
+			Page:       1,
+			Limit:      10,
+			Total:      0,
+			TotalPages: 0,
+		}, nil
+	}
+
 	collection := systemContext.MongoDB.Collection("project")
 
 	// Build base filter

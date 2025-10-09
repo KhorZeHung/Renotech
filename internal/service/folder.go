@@ -186,6 +186,17 @@ func FolderGetByID(folderID primitive.ObjectID, systemContext *model.SystemConte
 }
 
 func FolderList(input model.FolderListRequest, systemContext *model.SystemContext) (*model.FolderListResponse, error) {
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return &model.FolderListResponse{
+			Data:       []bson.M{},
+			Page:       1,
+			Limit:      10,
+			Total:      0,
+			TotalPages: 0,
+		}, nil
+	}
+
 	collection := systemContext.MongoDB.Collection("folder")
 
 	// Build base filter

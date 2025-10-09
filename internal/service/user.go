@@ -285,6 +285,17 @@ func UserTenantGetByID(userID primitive.ObjectID, systemContext *model.SystemCon
 }
 
 func UserTenantList(input model.UserListRequest, systemContext *model.SystemContext) (*model.UserListResponse, error) {
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return &model.UserListResponse{
+			Data:       []bson.M{},
+			Page:       1,
+			Limit:      10,
+			Total:      0,
+			TotalPages: 0,
+		}, nil
+	}
+
 	collection := systemContext.MongoDB.Collection("user")
 
 	// Build base filter
