@@ -55,7 +55,7 @@ func main() {
 	setupRoutes(router)
 
 	// Get server configuration
-	host := getEnvString("SERVER_HOST", "0.0.0.0")
+	host := getEnvString("SERVER_HOST", "localhost")
 	port := getEnvString("SERVER_PORT", "8000")
 	addr := fmt.Sprintf("%s:%s", host, port)
 
@@ -142,6 +142,7 @@ func setupRoutes(router *gin.Engine) {
 	controller.AuthAPIInit(router)
 	controller.MediaAPIInit(router)
 	controller.QuotationTemplateAPIInit(router)
+	controller.DocumentTemplateAPIInit(router)
 	controller.CompanyAPIInit(router)
 	controller.UserAPIInit(router)
 	controller.SupplierAPIInit(router)
