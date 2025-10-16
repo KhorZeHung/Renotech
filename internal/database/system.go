@@ -47,12 +47,14 @@ type SystemAreaMaterialDetail struct {
 }
 
 type SystemDiscount struct {
+	Name        string            `bson:"name" json:"name"`
 	Value       float64           `bson:"value" json:"value"`
 	Type        enum.DiscountType `bson:"type" json:"type"`
 	Description string            `bson:"description" json:"description"`
 }
 
 type SystemAdditionalCharge struct {
+	Name        string                    `bson:"name" json:"name"`
 	Value       float64                   `bson:"value" json:"value"`
 	Type        enum.AdditionalChargeType `bson:"type" json:"type"`
 	Description string                    `bson:"description" json:"description"`
