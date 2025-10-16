@@ -13,6 +13,8 @@ type Company struct {
 	SupplierDisplayName string              `bson:"supplierDisplayName" json:"supplierDisplayName"`
 	Address             string              `bson:"address" json:"address"`
 	Website             string              `bson:"website" json:"website"`
+	Email               string              `bson:"email" json:"email"`
+	Description         string              `bson:"description" json:"description"`
 	Owner               *primitive.ObjectID `bson:"owner,omitempty" json:"owner,omitempty"`
 	Logo                string              `bson:"logo" json:"logo"`
 	RegistrationNo      string              `bson:"registrationNo" json:"registrationNo"`

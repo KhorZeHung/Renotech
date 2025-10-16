@@ -128,32 +128,32 @@ func materialTenantCreateValidation(input *database.Material, systemContext *mod
 		)
 	}
 
-	// Check for duplicate material name within the same company and supplier
-	filter := bson.M{
-		"name":      input.Name,
-		"company":   *systemContext.User.Company,
-		"isDeleted": false,
-	}
+	// // Check for duplicate material name within the same company and supplier
+	// filter := bson.M{
+	// 	"name":      input.Name,
+	// 	"company":   *systemContext.User.Company,
+	// 	"isDeleted": false,
+	// }
 
-	// Add supplier to filter if provided
-	if input.Supplier != nil {
-		filter["supplier"] = input.Supplier
-	} else {
-		filter["supplier"] = bson.M{"$exists": false}
-	}
+	// // Add supplier to filter if provided
+	// if input.Supplier != nil {
+	// 	filter["supplier"] = input.Supplier
+	// } else {
+	// 	filter["supplier"] = bson.M{"$exists": false}
+	// }
 
-	count, err := collection.CountDocuments(context.Background(), filter)
-	if err != nil {
-		return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
-	}
+	// count, err := collection.CountDocuments(context.Background(), filter)
+	// if err != nil {
+	// 	return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
+	// }
 
-	if count > 0 {
-		return utils.SystemError(
-			enum.ErrorCodeValidation,
-			"Material name already exists within your company and supplier scope",
-			map[string]interface{}{"name": input.Name},
-		)
-	}
+	// if count > 0 {
+	// 	return utils.SystemError(
+	// 		enum.ErrorCodeValidation,
+	// 		"Material name already exists within your company and supplier scope",
+	// 		map[string]interface{}{"name": input.Name},
+	// 	)
+	// }
 
 	// Set company from user context and auto-fill fields
 	input.Company = *systemContext.User.Company
@@ -347,33 +347,33 @@ func materialTenantUpdateValidation(input *database.Material, systemContext *mod
 		)
 	}
 
-	// Check for duplicate material name within the same company and supplier (excluding current material)
-	nameFilter := bson.M{
-		"name":      input.Name,
-		"company":   *systemContext.User.Company,
-		"isDeleted": false,
-		"_id":       bson.M{"$ne": input.ID}, // Exclude current material
-	}
+	// // Check for duplicate material name within the same company and supplier (excluding current material)
+	// nameFilter := bson.M{
+	// 	"name":      input.Name,
+	// 	"company":   *systemContext.User.Company,
+	// 	"isDeleted": false,
+	// 	"_id":       bson.M{"$ne": input.ID}, // Exclude current material
+	// }
 
-	// Add supplier to filter if provided
-	if input.Supplier != nil {
-		nameFilter["supplier"] = input.Supplier
-	} else {
-		nameFilter["supplier"] = bson.M{"$exists": false}
-	}
+	// // Add supplier to filter if provided
+	// if input.Supplier != nil {
+	// 	nameFilter["supplier"] = input.Supplier
+	// } else {
+	// 	nameFilter["supplier"] = bson.M{"$exists": false}
+	// }
 
-	count, err := collection.CountDocuments(context.Background(), nameFilter)
-	if err != nil {
-		return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
-	}
+	// count, err := collection.CountDocuments(context.Background(), nameFilter)
+	// if err != nil {
+	// 	return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
+	// }
 
-	if count > 0 {
-		return utils.SystemError(
-			enum.ErrorCodeValidation,
-			"Material name already exists within your company and supplier scope",
-			map[string]interface{}{"name": input.Name},
-		)
-	}
+	// if count > 0 {
+	// 	return utils.SystemError(
+	// 		enum.ErrorCodeValidation,
+	// 		"Material name already exists within your company and supplier scope",
+	// 		map[string]interface{}{"name": input.Name},
+	// 	)
+	// }
 
 	return nil
 }
@@ -404,11 +404,10 @@ func MaterialTenantUpdate(input *database.Material, systemContext *model.SystemC
 			"unit":                input.Unit,
 			"costPerUnit":         input.CostPerUnit,
 			"pricePerUnit":        input.PricePerUnit,
-			"categories":          input.Categories,
-			"tags":                input.Tags,
 			"media":               input.Media,
 			"status":              input.Status,
 			"remark":              input.Remark,
+			"description":         input.Description,
 			"updatedAt":           time.Now(),
 			"updatedBy":           *systemContext.User.ID,
 		},

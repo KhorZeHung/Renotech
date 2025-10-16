@@ -60,27 +60,29 @@ func QuotationCreate(input *database.Quotation, systemContext *model.SystemConte
 	collection := systemContext.MongoDB.Collection("quotation")
 
 	// Calculate totals
-	totalCost, totalCharge, totalDiscount, totalNettCharge := calculateQuotationTotals(input.AreaMaterials, input.Discount)
+	totalCharge, totalDiscount, totalAdditionalCharge, totalNettCharge := calculateQuotationTotals(input.AreaMaterials, input.Discounts, input.AdditionalCharges)
 
 	// Create quotation object
 	quotation := &database.Quotation{
-		Folder:          input.Folder,
-		Company:         systemContext.User.Company,
-		Name:            input.Name,
-		Description:     input.Description,
-		Remark:          input.Remark,
-		AreaMaterials:   input.AreaMaterials,
-		Discount:        input.Discount,
-		TotalDiscount:   totalDiscount,
-		TotalCharge:     totalCharge,
-		TotalNettCharge: totalNettCharge,
-		TotalCost:       totalCost,
-		IsStared:        input.IsStared,
-		CreatedAt:       time.Now(),
-		CreatedBy:       *systemContext.User.ID,
-		UpdatedAt:       time.Now(),
-		UpdatedBy:       systemContext.User.ID,
-		IsDeleted:       false,
+		Folder:                input.Folder,
+		Company:               systemContext.User.Company,
+		Name:                  input.Name,
+		ExpiredAt:             input.ExpiredAt,
+		Description:           input.Description,
+		Remark:                input.Remark,
+		AreaMaterials:         input.AreaMaterials,
+		Discounts:             input.Discounts,
+		AdditionalCharges:     input.AdditionalCharges,
+		TotalCharge:           totalCharge,
+		TotalDiscount:         totalDiscount,
+		TotalAdditionalCharge: totalAdditionalCharge,
+		TotalNettCharge:       totalNettCharge,
+		IsStared:              input.IsStared,
+		CreatedAt:             time.Now(),
+		CreatedBy:             *systemContext.User.ID,
+		UpdatedAt:             time.Now(),
+		UpdatedBy:             systemContext.User.ID,
+		IsDeleted:             false,
 	}
 
 	result, err := collection.InsertOne(context.Background(), quotation)
@@ -171,22 +173,24 @@ func QuotationUpdate(input *database.Quotation, systemContext *model.SystemConte
 	}
 
 	// Calculate totals
-	totalCost, totalCharge, totalDiscount, totalNettCharge := calculateQuotationTotals(input.AreaMaterials, input.Discount)
+	totalCharge, totalDiscount, totalAdditionalCharge, totalNettCharge := calculateQuotationTotals(input.AreaMaterials, input.Discounts, input.AdditionalCharges)
 
 	// Build update object
 	updateFields := bson.M{
-		"folder":          input.Folder,
-		"name":            input.Name,
-		"description":     input.Description,
-		"remark":          input.Remark,
-		"areaMaterials":   input.AreaMaterials,
-		"discount":        input.Discount,
-		"totalDiscount":   totalDiscount,
-		"totalCharge":     totalCharge,
-		"totalNettCharge": totalNettCharge,
-		"totalCost":       totalCost,
-		"updatedAt":       time.Now(),
-		"updatedBy":       systemContext.User.ID,
+		"folder":                input.Folder,
+		"name":                  input.Name,
+		"expiredAt":             input.ExpiredAt,
+		"description":           input.Description,
+		"remark":                input.Remark,
+		"areaMaterials":         input.AreaMaterials,
+		"discounts":             input.Discounts,
+		"additionalCharges":     input.AdditionalCharges,
+		"totalCharge":           totalCharge,
+		"totalDiscount":         totalDiscount,
+		"totalAdditionalCharge": totalAdditionalCharge,
+		"totalNettCharge":       totalNettCharge,
+		"updatedAt":             time.Now(),
+		"updatedBy":             systemContext.User.ID,
 	}
 
 	update := bson.M{"$set": updateFields}
@@ -512,40 +516,56 @@ func validateAreaMaterials(areaMaterials []database.SystemAreaMaterial, systemCo
 	return nil
 }
 
-func calculateQuotationTotals(areaMaterials []database.SystemAreaMaterial, discount database.SystemDiscount) (float64, float64, float64, float64) {
-	var totalCost, totalCharge float64
+func calculateQuotationTotals(areaMaterials []database.SystemAreaMaterial, discounts []database.SystemDiscount, additionalCharges []database.SystemAdditionalCharge) (float64, float64, float64, float64) {
+	var totalCharge float64
 
-	// First, calculate individual material totals and sum them up
+	// Sum up area subtotals (use SubTotal values from payload as-is)
 	for i := range areaMaterials {
-		for j := range areaMaterials[i].Materials {
-			material := &areaMaterials[i].Materials[j]
-
-			// Calculate individual material totals
-			material.TotalCost = material.CostPerUnit * material.Quantity
-			material.TotalPrice = material.PricePerUnit * material.Quantity
-
-			// Add to overall totals
-			totalCost += material.TotalCost
-			totalCharge += material.TotalPrice
-		}
+		// Add area SubTotal to overall total charge
+		totalCharge += areaMaterials[i].SubTotal
 	}
 
-	// Calculate discount
-	var totalDiscount float64
-	switch discount.Type {
-	case enum.DiscountTypeRate:
-		totalDiscount = totalCharge * (discount.Value / 100)
-	case enum.DiscountTypeAmount:
-		totalDiscount = discount.Value
-	default:
-		totalDiscount = 0
-	}
+	// Calculate total discounts
+	totalDiscount := calculateDiscounts(discounts, totalCharge)
 
-	// Calculate net charge (total charge minus discount)
-	totalNettCharge := totalCharge - totalDiscount
+	// Calculate total additional charges
+	totalAdditionalCharge := calculateAdditionalCharges(additionalCharges, totalCharge)
+
+	// Calculate net charge (total charge - discount + additional charges)
+	totalNettCharge := totalCharge - totalDiscount + totalAdditionalCharge
 	if totalNettCharge < 0 {
 		totalNettCharge = 0
 	}
 
-	return totalCost, totalCharge, totalDiscount, totalNettCharge
+	return totalCharge, totalDiscount, totalAdditionalCharge, totalNettCharge
+}
+
+func calculateDiscounts(discounts []database.SystemDiscount, totalCharge float64) float64 {
+	var totalDiscount float64
+
+	for _, discount := range discounts {
+		switch discount.Type {
+		case enum.DiscountTypeRate:
+			totalDiscount += totalCharge * (discount.Value / 100)
+		case enum.DiscountTypeAmount:
+			totalDiscount += discount.Value
+		}
+	}
+
+	return totalDiscount
+}
+
+func calculateAdditionalCharges(charges []database.SystemAdditionalCharge, totalCharge float64) float64 {
+	var totalAdditionalCharge float64
+
+	for _, charge := range charges {
+		switch charge.Type {
+		case enum.AdditionalChargeTypeRate:
+			totalAdditionalCharge += totalCharge * (charge.Value / 100)
+		case enum.AdditionalChargeTypeAmount:
+			totalAdditionalCharge += charge.Value
+		}
+	}
+
+	return totalAdditionalCharge
 }
