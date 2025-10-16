@@ -19,12 +19,12 @@ type Material struct {
 	Unit                string              `bson:"unit" json:"unit"`
 	CostPerUnit         float64             `bson:"costPerUnit" json:"costPerUnit"`
 	PricePerUnit        float64             `bson:"pricePerUnit" json:"pricePerUnit"`
-	Categories          []string            `bson:"categories" json:"categories"`
 	Tags                []string            `bson:"tags" json:"tags"`
 	Media               []SystemMedia       `bson:"media" json:"media"`
 	Company             primitive.ObjectID  `bson:"company" json:"company"`
 	Status              enum.MaterialStatus `bson:"status" json:"status"`
 	Remark              string              `bson:"remark" json:"remark"`
+	Description         string              `bson:"description" json:"description"`
 	CreatedAt           time.Time           `bson:"createdAt" json:"createdAt"`
 	CreatedBy           primitive.ObjectID  `bson:"createdBy" json:"createdBy"`
 	UpdatedAt           time.Time           `bson:"updatedAt" json:"updatedAt"`

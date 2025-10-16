@@ -149,8 +149,6 @@ func setupRoutes(router *gin.Engine) {
 	controller.MaterialAPIInit(router)
 	controller.FolderAPIInit(router)
 	controller.QuotationAPIInit(router)
-	controller.ProjectAPIInit(router)
-	controller.OrderAPIInit(router)
 }
 
 // healthCheckHandler provides a health check endpoint

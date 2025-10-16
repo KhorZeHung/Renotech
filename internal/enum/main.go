@@ -4,6 +4,7 @@ type MaterialType string
 type MediaType string
 type MaterialStatus string
 type DiscountType string
+type AdditionalChargeType string
 type UserType string
 type ErrorCode string
 type OrderStatus string
@@ -40,6 +41,11 @@ const (
 const (
 	DiscountTypeRate   DiscountType = "rate"
 	DiscountTypeAmount DiscountType = "amount"
+)
+
+const (
+	AdditionalChargeTypeRate   AdditionalChargeType = "rate"
+	AdditionalChargeTypeAmount AdditionalChargeType = "amount"
 )
 
 const (
