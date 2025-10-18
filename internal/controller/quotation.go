@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 	"renotech.com.my/internal/database"
 	"renotech.com.my/internal/enum"
@@ -172,6 +173,97 @@ func quotationToggleStarHandler(c *gin.Context) {
 	utils.SendSuccessResponse(c, result)
 }
 
+func quotationCreateFolderHandler(c *gin.Context) {
+	systemContext := utils.GetSystemContextFromGin(c)
+	systemContext.Logger.Info("Quotation create folder started", zap.String("endpoint", "/api/v1/quotation/folder/create"))
+	defer systemContext.Logger.Info("Quotation create folder completed")
+
+	var input model.QuotationCreateFolderRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid request data",
+			map[string]interface{}{"details": err.Error()},
+		))
+		return
+	}
+
+	result, err := service.QuotationCreateFolder(&input, systemContext)
+	if err != nil {
+		systemContext.Logger.Error("Quotation create folder failed", zap.Error(err))
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	systemContext.Logger.Info("Quotation create folder successful",
+		zap.String("folderID", result.ID.Hex()),
+		zap.String("name", result.Name),
+	)
+
+	utils.SendSuccessResponse(c, result)
+}
+
+func quotationMoveHandler(c *gin.Context) {
+	systemContext := utils.GetSystemContextFromGin(c)
+	systemContext.Logger.Info("Quotation move started", zap.String("endpoint", "/api/v1/quotation/move"))
+	defer systemContext.Logger.Info("Quotation move completed")
+
+	var input model.QuotationMoveRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid request data",
+			map[string]interface{}{"details": err.Error()},
+		))
+		return
+	}
+
+	result, err := service.QuotationMove(&input, systemContext)
+	if err != nil {
+		systemContext.Logger.Error("Quotation move failed", zap.Error(err))
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	systemContext.Logger.Info("Quotation move successful",
+		zap.String("quotationID", result.ID.Hex()),
+		zap.String("folderID", result.Folder.Hex()),
+	)
+
+	utils.SendSuccessResponse(c, result)
+}
+
+func quotationDuplicateHandler(c *gin.Context) {
+	systemContext := utils.GetSystemContextFromGin(c)
+	systemContext.Logger.Info("Quotation duplicate started", zap.String("endpoint", "/api/v1/quotation/duplicate"))
+	defer systemContext.Logger.Info("Quotation duplicate completed")
+
+	var input primitive.ObjectID
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Invalid request data",
+			map[string]interface{}{"details": err.Error()},
+		))
+		return
+	}
+
+	result, err := service.QuotationDuplicate(&input, systemContext)
+	if err != nil {
+		systemContext.Logger.Error("Quotation duplicate failed", zap.Error(err))
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	systemContext.Logger.Info("Quotation duplicate successful",
+		zap.String("originalID", input.Hex()),
+		zap.String("newID", result.ID.Hex()),
+		zap.String("name", result.Name),
+	)
+
+	utils.SendSuccessResponse(c, result)
+}
+
 func QuotationAPIInit(r *gin.Engine) {
 	// Quotation routes - Protected with tenant auth middleware
 	quotationGroup := r.Group("/api/v1/quotation")
@@ -183,5 +275,8 @@ func QuotationAPIInit(r *gin.Engine) {
 		quotationGroup.PUT("", quotationUpdateHandler)
 		quotationGroup.DELETE("/:id", quotationDeleteHandler)
 		quotationGroup.PATCH("/:id/star", quotationToggleStarHandler)
+		quotationGroup.POST("/folder/create", quotationCreateFolderHandler)
+		quotationGroup.PATCH("/move", quotationMoveHandler)
+		quotationGroup.POST("/duplicate", quotationDuplicateHandler)
 	}
 }

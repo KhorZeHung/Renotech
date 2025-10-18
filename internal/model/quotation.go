@@ -28,3 +28,13 @@ type QuotationListResponse struct {
 type QuotationToggleStarRequest struct {
 	IsStared bool `json:"isStared"`
 }
+
+type QuotationCreateFolderRequest struct {
+	ID   primitive.ObjectID `json:"_id"`
+	Name string             `json:"name"`
+}
+
+type QuotationMoveRequest struct {
+	ID     primitive.ObjectID `json:"_id"`
+	Folder primitive.ObjectID `json:"folder"`
+}

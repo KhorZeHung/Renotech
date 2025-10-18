@@ -66,3 +66,9 @@ type SystemActionLog struct {
 	ByName      string              `bson:"byName" json:"byName"`
 	ById        *primitive.ObjectID `bson:"byId" json:"byId"`
 }
+
+type SystemClient struct {
+	Name    string `bson:"Nname" json:"name"`
+	Contact string `bson:"contact" json:"contact"`
+	Email   string `bson:"email" json:"email"`
+}
