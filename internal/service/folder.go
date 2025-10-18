@@ -44,23 +44,21 @@ func FolderCreate(input *database.Folder, systemContext *model.SystemContext) (*
 
 	// Create folder object
 	folder := &database.Folder{
-		Name:           input.Name,
-		Company:        systemContext.User.Company,
-		ClientName:     input.ClientName,
-		ClientContact:  input.ClientContact,
-		ClientEmail:    input.ClientEmail,
-		ClientBudget:   input.ClientBudget,
-		ProjectAddress: input.ProjectAddress,
-		Description:    input.Description,
-		Remark:         input.Remark,
-		Status:         input.Status,
-		Media:          input.Media,
-		Areas:          input.Areas,
-		CreatedAt:      time.Now(),
-		CreatedBy:      *systemContext.User.ID,
-		UpdatedAt:      time.Now(),
-		UpdatedBy:      systemContext.User.ID,
-		IsDeleted:      false,
+		Name:        input.Name,
+		Company:     systemContext.User.Company,
+		Client:      input.Client,
+		Budget:      input.Budget,
+		Address:     input.Address,
+		Description: input.Description,
+		Remark:      input.Remark,
+		Status:      input.Status,
+		Media:       input.Media,
+		Areas:       input.Areas,
+		CreatedAt:   time.Now(),
+		CreatedBy:   *systemContext.User.ID,
+		UpdatedAt:   time.Now(),
+		UpdatedBy:   systemContext.User.ID,
+		IsDeleted:   false,
 	}
 
 	result, err := collection.InsertOne(context.Background(), folder)
@@ -135,19 +133,17 @@ func FolderUpdate(input *database.Folder, systemContext *model.SystemContext) (*
 
 	// Build update object
 	updateFields := bson.M{
-		"name":           input.Name,
-		"clientName":     input.ClientName,
-		"clientContact":  input.ClientContact,
-		"clientEmail":    input.ClientEmail,
-		"clientBudget":   input.ClientBudget,
-		"projectAddress": input.ProjectAddress,
-		"description":    input.Description,
-		"remark":         input.Remark,
-		"status":         input.Status,
-		"media":          input.Media,
-		"areas":          input.Areas,
-		"updatedAt":      time.Now(),
-		"updatedBy":      systemContext.User.ID,
+		"name":        input.Name,
+		"client":      input.Client,
+		"budget":      input.Budget,
+		"address":     input.Address,
+		"description": input.Description,
+		"remark":      input.Remark,
+		"status":      input.Status,
+		"media":       input.Media,
+		"areas":       input.Areas,
+		"updatedAt":   time.Now(),
+		"updatedBy":   systemContext.User.ID,
 	}
 
 	update := bson.M{"$set": updateFields}

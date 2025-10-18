@@ -19,21 +19,24 @@ import (
 )
 
 func quotationCreateValidation(input *database.Quotation, systemContext *model.SystemContext) error {
-	// Validate folder exists and belongs to company
-	folderCollection := systemContext.MongoDB.Collection("folder")
-	filter := bson.M{
-		"_id":       input.Folder,
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-	}
+	// Validate folder exists and belongs to company (only if folder is provided)
+	if input.Folder != nil {
+		folderCollection := systemContext.MongoDB.Collection("folder")
+		filter := bson.M{
+			"_id":       input.Folder,
+			"company":   systemContext.User.Company,
+			"isDeleted": false,
+		}
 
-	count, err := folderCollection.CountDocuments(context.Background(), filter)
-	if err != nil {
-		return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate folder", nil)
-	}
+		count, err := folderCollection.CountDocuments(context.Background(), filter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate folder", nil)
+		}
 
-	if count == 0 {
-		return utils.SystemError(enum.ErrorCodeValidation, "Folder not found", nil)
+		if count == 0 {
+			fmt.Println("here")
+			return utils.SystemError(enum.ErrorCodeValidation, "Folder not found", nil)
+		}
 	}
 
 	// Validate materials in area materials
@@ -67,6 +70,9 @@ func QuotationCreate(input *database.Quotation, systemContext *model.SystemConte
 		Folder:                input.Folder,
 		Company:               systemContext.User.Company,
 		Name:                  input.Name,
+		Client:                input.Client,
+		Budget:                input.Budget,
+		Address:               input.Address,
 		ExpiredAt:             input.ExpiredAt,
 		Description:           input.Description,
 		Remark:                input.Remark,
@@ -117,21 +123,23 @@ func quotationUpdateValidation(input *database.Quotation, systemContext *model.S
 		return utils.SystemError(enum.ErrorCodeNotFound, "Quotation not found", nil)
 	}
 
-	// Validate folder exists and belongs to company
-	folderCollection := systemContext.MongoDB.Collection("folder")
-	folderFilter := bson.M{
-		"_id":       input.Folder,
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-	}
+	// Validate folder exists and belongs to company (only if folder is provided)
+	if input.Folder != nil {
+		folderCollection := systemContext.MongoDB.Collection("folder")
+		folderFilter := bson.M{
+			"_id":       input.Folder,
+			"company":   systemContext.User.Company,
+			"isDeleted": false,
+		}
 
-	count, err := folderCollection.CountDocuments(context.Background(), folderFilter)
-	if err != nil {
-		return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate folder", nil)
-	}
+		count, err := folderCollection.CountDocuments(context.Background(), folderFilter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate folder", nil)
+		}
 
-	if count == 0 {
-		return utils.SystemError(enum.ErrorCodeValidation, "Folder not found", nil)
+		if count == 0 {
+			return utils.SystemError(enum.ErrorCodeValidation, "Folder not found", nil)
+		}
 	}
 
 	// Validate materials in area materials
@@ -179,6 +187,9 @@ func QuotationUpdate(input *database.Quotation, systemContext *model.SystemConte
 	updateFields := bson.M{
 		"folder":                input.Folder,
 		"name":                  input.Name,
+		"client":                input.Client,
+		"budget":                input.Budget,
+		"address":               input.Address,
 		"expiredAt":             input.ExpiredAt,
 		"description":           input.Description,
 		"remark":                input.Remark,
@@ -568,4 +579,261 @@ func calculateAdditionalCharges(charges []database.SystemAdditionalCharge, total
 	}
 
 	return totalAdditionalCharge
+}
+
+func quotationCreateFolderValidation(input *model.QuotationCreateFolderRequest, systemContext *model.SystemContext) error {
+	collection := systemContext.MongoDB.Collection("quotation")
+
+	// Check if quotation exists
+	filter := bson.M{
+		"_id":       input.ID,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	count, err := collection.CountDocuments(context.Background(), filter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate quotation", nil)
+	}
+
+	if count == 0 {
+		return utils.SystemError(enum.ErrorCodeNotFound, "Quotation not found", nil)
+	}
+
+	return nil
+}
+
+func QuotationCreateFolder(input *model.QuotationCreateFolderRequest, systemContext *model.SystemContext) (*database.Folder, error) {
+	// Validate input
+	if err := quotationCreateFolderValidation(input, systemContext); err != nil {
+		return nil, err
+	}
+
+	// Get quotation
+	quotation, err := QuotationGetByID(input.ID, systemContext)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract unique areas from quotation's AreaMaterials
+	areaMap := make(map[string]database.SystemArea)
+	for _, areaMaterial := range quotation.AreaMaterials {
+		areaMap[areaMaterial.Area.Name] = areaMaterial.Area
+	}
+
+	var areas []database.SystemArea
+	for _, area := range areaMap {
+		areas = append(areas, area)
+	}
+
+	// Create folder from quotation data
+	folderInput := &database.Folder{
+		Name:        input.Name,
+		Client:      quotation.Client,
+		Budget:      quotation.Budget,
+		Address:     quotation.Address,
+		Description: quotation.Description,
+		Remark:      quotation.Remark,
+		Media:       quotation.Media,
+		Areas:       areas,
+		Status:      "", // Default empty status
+	}
+
+	// Create folder using FolderCreate service
+	folder, err := FolderCreate(folderInput, systemContext)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update quotation's folder field
+	collection := systemContext.MongoDB.Collection("quotation")
+	filter := bson.M{
+		"_id":       input.ID,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"folder":    folder.ID,
+			"updatedAt": time.Now(),
+			"updatedBy": systemContext.User.ID,
+		},
+	}
+
+	_, err = collection.UpdateOne(context.Background(), filter, update)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to update quotation folder", nil)
+	}
+
+	return folder, nil
+}
+
+func quotationMoveValidation(input *model.QuotationMoveRequest, systemContext *model.SystemContext) error {
+	collection := systemContext.MongoDB.Collection("quotation")
+
+	// Check if quotation exists
+	filter := bson.M{
+		"_id":       input.ID,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	count, err := collection.CountDocuments(context.Background(), filter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate quotation", nil)
+	}
+
+	if count == 0 {
+		return utils.SystemError(enum.ErrorCodeNotFound, "Quotation not found", nil)
+	}
+
+	// Validate target folder exists
+	folderCollection := systemContext.MongoDB.Collection("folder")
+	folderFilter := bson.M{
+		"_id":       input.Folder,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	folderCount, err := folderCollection.CountDocuments(context.Background(), folderFilter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate folder", nil)
+	}
+
+	if folderCount == 0 {
+		return utils.SystemError(enum.ErrorCodeNotFound, "Folder not found", nil)
+	}
+
+	return nil
+}
+
+func QuotationMove(input *model.QuotationMoveRequest, systemContext *model.SystemContext) (*database.Quotation, error) {
+	// Validate input
+	if err := quotationMoveValidation(input, systemContext); err != nil {
+		return nil, err
+	}
+
+	collection := systemContext.MongoDB.Collection("quotation")
+
+	// Update quotation's folder field
+	filter := bson.M{
+		"_id":       input.ID,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"folder":    input.Folder,
+			"updatedAt": time.Now(),
+			"updatedBy": systemContext.User.ID,
+		},
+	}
+
+	_, err := collection.UpdateOne(context.Background(), filter, update)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to move quotation", nil)
+	}
+
+	// Return updated quotation
+	var doc database.Quotation
+	err = collection.FindOne(context.Background(), filter).Decode(&doc)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve updated quotation", nil)
+	}
+
+	return &doc, nil
+}
+
+func quotationDuplicateValidation(input *primitive.ObjectID, systemContext *model.SystemContext) error {
+	collection := systemContext.MongoDB.Collection("quotation")
+
+	// Check if quotation exists
+	filter := bson.M{
+		"_id":       input,
+		"company":   systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	count, err := collection.CountDocuments(context.Background(), filter)
+	if err != nil {
+		return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate quotation", nil)
+	}
+
+	if count == 0 {
+		return utils.SystemError(enum.ErrorCodeNotFound, "Quotation not found", nil)
+	}
+
+	return nil
+}
+
+func QuotationDuplicate(input *primitive.ObjectID, systemContext *model.SystemContext) (*database.Quotation, error) {
+	// Validate input
+	if err := quotationDuplicateValidation(input, systemContext); err != nil {
+		return nil, err
+	}
+
+	// Get original quotation
+	original, err := QuotationGetByID(*input, systemContext)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate new name with " (copy)" suffix
+	baseName := original.Name + " (copy)"
+	uniqueName, err := generateUniqueQuotationName(baseName, systemContext)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate totals
+	totalCharge, totalDiscount, totalAdditionalCharge, totalNettCharge := calculateQuotationTotals(
+		original.AreaMaterials,
+		original.Discounts,
+		original.AdditionalCharges,
+	)
+
+	// Create new quotation with duplicated data
+	newQuotation := &database.Quotation{
+		Folder:                original.Folder,
+		Company:               systemContext.User.Company,
+		Name:                  uniqueName,
+		Client:                original.Client,
+		Budget:                original.Budget,
+		Address:               original.Address,
+		ExpiredAt:             original.ExpiredAt,
+		Description:           original.Description,
+		Remark:                original.Remark,
+		AreaMaterials:         original.AreaMaterials,
+		Discounts:             original.Discounts,
+		AdditionalCharges:     original.AdditionalCharges,
+		TotalCharge:           totalCharge,
+		TotalDiscount:         totalDiscount,
+		TotalAdditionalCharge: totalAdditionalCharge,
+		TotalNettCharge:       totalNettCharge,
+		Media:                 original.Media,
+		IsStared:              false, // Reset star status
+		CreatedAt:             time.Now(),
+		CreatedBy:             *systemContext.User.ID,
+		UpdatedAt:             time.Now(),
+		UpdatedBy:             systemContext.User.ID,
+		IsDeleted:             false,
+	}
+
+	collection := systemContext.MongoDB.Collection("quotation")
+	result, err := collection.InsertOne(context.Background(), newQuotation)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to duplicate quotation", nil)
+	}
+
+	quotationID := result.InsertedID.(primitive.ObjectID)
+
+	var duplicatedDoc database.Quotation
+	err = collection.FindOne(context.Background(), bson.M{"_id": quotationID}).Decode(&duplicatedDoc)
+	if err != nil {
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve duplicated quotation", nil)
+	}
+
+	return &duplicatedDoc, nil
 }
