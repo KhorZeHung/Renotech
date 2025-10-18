@@ -35,6 +35,6 @@ type QuotationCreateFolderRequest struct {
 }
 
 type QuotationMoveRequest struct {
-	ID     primitive.ObjectID `json:"_id"`
-	Folder primitive.ObjectID `json:"folder"`
+	ID     primitive.ObjectID  `json:"_id"`
+	Folder *primitive.ObjectID `json:"folder"`
 }

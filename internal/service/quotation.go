@@ -689,20 +689,22 @@ func quotationMoveValidation(input *model.QuotationMoveRequest, systemContext *m
 	}
 
 	// Validate target folder exists
-	folderCollection := systemContext.MongoDB.Collection("folder")
-	folderFilter := bson.M{
-		"_id":       input.Folder,
-		"company":   systemContext.User.Company,
-		"isDeleted": false,
-	}
+	if input.Folder != nil {
+		folderCollection := systemContext.MongoDB.Collection("folder")
+		folderFilter := bson.M{
+			"_id":       input.Folder,
+			"company":   systemContext.User.Company,
+			"isDeleted": false,
+		}
 
-	folderCount, err := folderCollection.CountDocuments(context.Background(), folderFilter)
-	if err != nil {
-		return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate folder", nil)
-	}
+		folderCount, err := folderCollection.CountDocuments(context.Background(), folderFilter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to validate folder", nil)
+		}
 
-	if folderCount == 0 {
-		return utils.SystemError(enum.ErrorCodeNotFound, "Folder not found", nil)
+		if folderCount == 0 {
+			return utils.SystemError(enum.ErrorCodeNotFound, "Folder not found", nil)
+		}
 	}
 
 	return nil
