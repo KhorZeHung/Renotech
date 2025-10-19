@@ -195,6 +195,7 @@ func QuotationUpdate(input *database.Quotation, systemContext *model.SystemConte
 		"remark":                input.Remark,
 		"areaMaterials":         input.AreaMaterials,
 		"discounts":             input.Discounts,
+		"media":                 input.Media,
 		"additionalCharges":     input.AdditionalCharges,
 		"totalCharge":           totalCharge,
 		"totalDiscount":         totalDiscount,
