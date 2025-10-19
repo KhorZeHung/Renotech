@@ -295,6 +295,6 @@ func MediaAPIInit(r *gin.Engine) {
 	assetsGroup := r.Group("/assets")
 	{
 		assetsGroup.GET("/*filePath", mediaFileFileServerHandler)
-		assetsGroup.DELETE("/*filePath", mediaDeleteByPathHandler)
+		assetsGroup.Use(middleware.JWTAuthMiddleware()).DELETE("/*filePath", mediaDeleteByPathHandler)
 	}
 }
