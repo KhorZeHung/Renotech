@@ -85,9 +85,6 @@ func MediaList(input model.MediaListRequest) (*model.MediaListResponse, error) {
 	if strings.TrimSpace(input.Type) != "" {
 		filter["type"] = input.Type
 	}
-	if strings.TrimSpace(input.Module) != "" {
-		filter["module"] = input.Module
-	}
 	if strings.TrimSpace(input.Extension) != "" {
 		filter["extension"] = input.Extension
 	}
@@ -102,7 +99,6 @@ func MediaList(input model.MediaListRequest) (*model.MediaListResponse, error) {
 			"$or": []bson.M{
 				{"name": searchRegex},
 				{"fileName": searchRegex},
-				{"module": searchRegex},
 			},
 		}
 
@@ -211,8 +207,8 @@ func executeMediaList(collection *mongo.Collection, filter bson.M, input model.M
 	return response, nil
 }
 
-// Media validation helper functions for other modules
-func ValidateMediaPath(path string, expectedModule string, systemContext *model.SystemContext) error {
+// Media validation helper functions
+func ValidateMediaPath(path string, systemContext *model.SystemContext) error {
 	if strings.TrimSpace(path) == "" {
 		return nil // Empty path is valid (optional field)
 	}
@@ -223,11 +219,10 @@ func ValidateMediaPath(path string, expectedModule string, systemContext *model.
 	normalizedPath := strings.ReplaceAll(path, "\\", "/")
 	normalizedPath = strings.TrimPrefix(normalizedPath, "./")
 
-	// Find media record with matching path, company, and module
+	// Find media record with matching path, company
 	filter := bson.M{
 		"path":    normalizedPath,
 		"company": *systemContext.User.Company,
-		"module":  expectedModule,
 	}
 
 	var doc database.Media
@@ -235,10 +230,9 @@ func ValidateMediaPath(path string, expectedModule string, systemContext *model.
 	if err != nil {
 		return utils.SystemError(
 			enum.ErrorCodeValidation,
-			fmt.Sprintf("Media path not found or invalid for module '%s'", expectedModule),
+			"Media path not found",
 			map[string]interface{}{
-				"path":   path,
-				"module": expectedModule,
+				"path": path,
 			},
 		)
 	}
@@ -246,9 +240,9 @@ func ValidateMediaPath(path string, expectedModule string, systemContext *model.
 	return nil
 }
 
-func ValidateMediaPaths(paths []string, expectedModule string, systemContext *model.SystemContext) error {
+func ValidateMediaPaths(paths []string, systemContext *model.SystemContext) error {
 	for i, path := range paths {
-		if err := ValidateMediaPath(path, expectedModule, systemContext); err != nil {
+		if err := ValidateMediaPath(path, systemContext); err != nil {
 			// Add index information for array validation
 			if appErr, ok := err.(*model.AppError); ok {
 				if details, ok := appErr.Details.(map[string]interface{}); ok {

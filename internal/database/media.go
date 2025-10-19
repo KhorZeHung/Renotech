@@ -12,7 +12,6 @@ type Media struct {
 	Name      string              `bson:"name" json:"name"`
 	Path      string              `bson:"path" json:"path"`
 	Type      enum.MediaType      `bson:"type" json:"type"`
-	Module    string              `bson:"module" json:"module"`
 	Extension string              `bson:"extension" json:"extension"`
 	FileName  string              `bson:"fileName" json:"fileName"`
 	Company   primitive.ObjectID  `bson:"company" json:"company"`

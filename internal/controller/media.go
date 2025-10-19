@@ -34,17 +34,6 @@ func mediaFileUploadHandler(c *gin.Context) {
 		return
 	}
 
-	// Get module from form data (required)
-	module := c.PostForm("module")
-	if strings.TrimSpace(module) == "" {
-		utils.SendErrorResponse(c, utils.SystemError(
-			enum.ErrorCodeValidation,
-			"Module is required",
-			nil,
-		))
-		return
-	}
-
 	// Validate file type
 	if !middleware.IsFileTypeAllowed(file.Filename) {
 		utils.SendErrorResponse(c, utils.SystemError(
@@ -115,7 +104,6 @@ func mediaFileUploadHandler(c *gin.Context) {
 		Extension: filepath.Ext(file.Filename),
 		Path:      filePath,
 		FileName:  file.Filename,
-		Module:    module,
 		Company:   *systemContext.User.Company,
 		CreatedBy: *systemContext.User.ID,
 	}
