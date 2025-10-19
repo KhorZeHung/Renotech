@@ -37,13 +37,16 @@ func RateLimitMiddleware() gin.HandlerFunc {
 // CORSMiddleware handles Cross-Origin Resource Sharing
 func CORSMiddleware() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
+		// Allow all origins or specify your frontend domain
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Request-ID")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Length, X-Request-ID")
+		c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
 
 		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
+			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 
@@ -117,6 +120,7 @@ func ValidateFilePath(filePath string) bool {
 
 // AllowedFileTypes defines the whitelist of allowed file extensions
 var AllowedFileTypes = map[string]bool{
+	// Image formats
 	".jpg":  true,
 	".jpeg": true,
 	".png":  true,
@@ -124,22 +128,64 @@ var AllowedFileTypes = map[string]bool{
 	".bmp":  true,
 	".webp": true,
 	".svg":  true,
+	".ico":  true,
+	".tiff": true,
+	".tif":  true,
+	".heic": true,
+	".heif": true,
+
+	// Video formats
 	".mp4":  true,
 	".mov":  true,
 	".avi":  true,
 	".mkv":  true,
 	".webm": true,
+	".mpeg": true,
+	".mpg":  true,
+	".wmv":  true,
+	".flv":  true,
+	".m4v":  true,
+	".3gp":  true,
+
+	// Audio formats
 	".mp3":  true,
 	".wav":  true,
 	".ogg":  true,
 	".flac": true,
+	".aac":  true,
+	".m4a":  true,
+	".wma":  true,
+	".aiff": true,
+	".opus": true,
+
+	// Document formats
 	".pdf":  true,
 	".doc":  true,
 	".docx": true,
 	".xls":  true,
 	".xlsx": true,
+	".ppt":  true,
+	".pptx": true,
 	".txt":  true,
 	".csv":  true,
+	".rtf":  true,
+	".odt":  true,
+	".ods":  true,
+	".odp":  true,
+
+	// Archive formats
+	".zip":  true,
+	".rar":  true,
+	".7z":   true,
+	".tar":  true,
+	".gz":   true,
+
+	// Web formats
+	".html": true,
+	".css":  true,
+	".js":   true,
+	".json": true,
+	".xml":  true,
 }
 
 // IsFileTypeAllowed checks if the file extension is in the whitelist

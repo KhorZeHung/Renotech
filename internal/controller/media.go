@@ -143,6 +143,9 @@ func mediaDeleteByPathHandler(c *gin.Context) {
 		return
 	}
 
+	// Strip leading slash if present (Gin router includes it in the parameter)
+	filePath = strings.TrimPrefix(filePath, "/")
+
 	// Validate the file path for security
 	if !middleware.ValidateFilePath(filePath) {
 		utils.SendErrorResponse(c, utils.SystemError(
