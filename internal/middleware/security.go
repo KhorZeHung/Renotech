@@ -24,7 +24,7 @@ func RateLimitMiddleware() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		if !limiter.Allow() {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"status": "error",
+				"status":  "error",
 				"message": "Rate limit exceeded",
 			})
 			c.Abort()
@@ -36,22 +36,20 @@ func RateLimitMiddleware() gin.HandlerFunc {
 
 // CORSMiddleware handles Cross-Origin Resource Sharing
 func CORSMiddleware() gin.HandlerFunc {
-	return gin.HandlerFunc(func(c *gin.Context) {
-		// Allow all origins or specify your frontend domain
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // Or specific origin
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Request-ID")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Length, X-Request-ID")
-		c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
 
 		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
+			c.AbortWithStatus(204)
 			return
 		}
 
 		c.Next()
-	})
+	}
 }
 
 // SecurityHeadersMiddleware adds security headers
@@ -78,7 +76,7 @@ func ValidateFileUpload() gin.HandlerFunc {
 		contentType := c.GetHeader("Content-Type")
 		if !strings.Contains(contentType, "multipart/form-data") {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"status": "error",
+				"status":  "error",
 				"message": "Invalid content type for file upload",
 			})
 			c.Abort()
@@ -89,7 +87,7 @@ func ValidateFileUpload() gin.HandlerFunc {
 		maxSize := int64(getEnvInt("MAX_FILE_SIZE", 52428800)) // 50MB default
 		if c.Request.ContentLength > maxSize {
 			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
-				"status": "error",
+				"status":  "error",
 				"message": "File size exceeds maximum allowed size",
 			})
 			c.Abort()
@@ -104,17 +102,17 @@ func ValidateFileUpload() gin.HandlerFunc {
 func ValidateFilePath(filePath string) bool {
 	// Clean the path
 	cleanPath := filepath.Clean(filePath)
-	
+
 	// Check for path traversal attempts
 	if strings.Contains(cleanPath, "..") {
 		return false
 	}
-	
+
 	// Ensure the path doesn't start with / (absolute path)
 	if strings.HasPrefix(cleanPath, "/") {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -174,11 +172,11 @@ var AllowedFileTypes = map[string]bool{
 	".odp":  true,
 
 	// Archive formats
-	".zip":  true,
-	".rar":  true,
-	".7z":   true,
-	".tar":  true,
-	".gz":   true,
+	".zip": true,
+	".rar": true,
+	".7z":  true,
+	".tar": true,
+	".gz":  true,
 
 	// Web formats
 	".html": true,
