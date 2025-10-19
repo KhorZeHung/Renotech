@@ -16,6 +16,12 @@ import (
 
 func JWTAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Skip JWT validation for OPTIONS requests (CORS preflight)
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			utils.SendErrorResponse(c, utils.SystemError(enum.ErrorCodeUnauthorized, "Authorization header required", nil))
