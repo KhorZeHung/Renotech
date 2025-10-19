@@ -108,11 +108,6 @@ func ValidateFilePath(filePath string) bool {
 		return false
 	}
 
-	// Ensure the path doesn't start with / (absolute path)
-	if strings.HasPrefix(cleanPath, "/") {
-		return false
-	}
-
 	return true
 }
 
