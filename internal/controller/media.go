@@ -205,8 +205,6 @@ func mediaListHandler(c *gin.Context) {
 }
 
 func mediaFileFileServerHandler(c *gin.Context) {
-	systemContext := utils.GetSystemContextFromGin(c)
-
 	// Get the requested file path from the URL
 	filePath := c.Param("filePath")
 	if filePath == "" {
@@ -231,12 +229,6 @@ func mediaFileFileServerHandler(c *gin.Context) {
 	cleanPath = strings.ReplaceAll(cleanPath, "\\", "/")
 	if !strings.HasPrefix(cleanPath, "./assets") && !strings.HasPrefix(cleanPath, "assets") {
 		c.JSON(400, gin.H{"error": "Access denied"})
-		return
-	}
-
-	// Validate company ownership of the media file
-	if err := service.MediaValidateAccess(fullPath, systemContext); err != nil {
-		c.JSON(403, gin.H{"error": "Access denied - file not found or unauthorized"})
 		return
 	}
 
@@ -301,7 +293,6 @@ func MediaAPIInit(r *gin.Engine) {
 
 	// Secured file serving and deletion endpoint
 	assetsGroup := r.Group("/assets")
-	assetsGroup.Use(middleware.JWTAuthMiddleware())
 	{
 		assetsGroup.GET("/*filePath", mediaFileFileServerHandler)
 		assetsGroup.DELETE("/*filePath", mediaDeleteByPathHandler)
