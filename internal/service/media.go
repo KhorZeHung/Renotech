@@ -70,6 +70,49 @@ func MediaDelete(input primitive.ObjectID, systemContext *model.SystemContext) e
 	return nil
 }
 
+func MediaDeleteByPath(filePath string, systemContext *model.SystemContext) error {
+	collection := systemContext.MongoDB.Collection("media")
+
+	// Normalize the path for comparison
+	normalizedPath := strings.ReplaceAll(filePath, "\\", "/")
+	normalizedPath = strings.TrimPrefix(normalizedPath, "./")
+
+	// Find media record with matching path, company, and creator validation
+	filter := bson.M{
+		"path":      normalizedPath,
+		"company":   *systemContext.User.Company,
+		"createdBy": *systemContext.User.ID,
+	}
+
+	var doc database.Media
+	err := collection.FindOne(context.Background(), filter).Decode(&doc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return utils.SystemError(
+				enum.ErrorCodeNotFound,
+				"Media file not found or you don't have permission to delete it",
+				map[string]interface{}{"path": filePath},
+			)
+		}
+		return err
+	}
+
+	// Delete from database
+	_, err = collection.DeleteOne(context.Background(), filter)
+	if err != nil {
+		return err
+	}
+
+	// Delete physical file
+	err = os.Remove(doc.Path)
+	if err != nil && !os.IsNotExist(err) {
+		// Log error but don't fail if file doesn't exist
+		return err
+	}
+
+	return nil
+}
+
 func MediaList(input model.MediaListRequest) (*model.MediaListResponse, error) {
 	// Get MongoDB connection (unprotected endpoint, so no system context)
 	mongoDB := utils.MongoGet()

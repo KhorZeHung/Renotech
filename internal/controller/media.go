@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 	"renotech.com.my/internal/database"
 	"renotech.com.my/internal/enum"
@@ -128,43 +127,57 @@ func mediaFileUploadHandler(c *gin.Context) {
 	// Send response with uploaded file info
 	utils.SendSuccessResponse(c, result)
 }
-func mediaDeleteHandler(c *gin.Context) {
+func mediaDeleteByPathHandler(c *gin.Context) {
 	systemContext := utils.GetSystemContextFromGin(c)
-	systemContext.Logger.Info("Media deletion started", zap.String("endpoint", "/api/v1/media/delete"))
-	defer systemContext.Logger.Info("Media deletion completed")
+	systemContext.Logger.Info("Media deletion by path started", zap.String("endpoint", "DELETE /assets/*filePath"))
+	defer systemContext.Logger.Info("Media deletion by path completed")
 
-	input := c.Param("id")
-	if input == "" {
+	// Get the requested file path from the URL
+	filePath := c.Param("filePath")
+	if filePath == "" {
 		utils.SendErrorResponse(c, utils.SystemError(
 			enum.ErrorCodeValidation,
-			"Media ID is required",
+			"File path is required",
 			nil,
 		))
 		return
 	}
 
-	id, err := primitive.ObjectIDFromHex(input)
-	if err != nil {
+	// Validate the file path for security
+	if !middleware.ValidateFilePath(filePath) {
 		utils.SendErrorResponse(c, utils.SystemError(
 			enum.ErrorCodeValidation,
-			"Invalid media ID format",
-			map[string]interface{}{"id": input},
-		))
-		return
-	}
-
-	err = service.MediaDelete(id, systemContext)
-	if err != nil {
-		systemContext.Logger.Error("Failed to delete media", zap.Error(err), zap.String("mediaId", id.Hex()))
-		utils.SendErrorResponse(c, utils.SystemError(
-			enum.ErrorCodeInternal,
-			"Failed to delete media",
+			"Invalid file path",
 			nil,
 		))
 		return
 	}
 
-	systemContext.Logger.Info("Media deleted successfully", zap.String("mediaId", id.Hex()))
+	// Construct full path for deletion
+	fullPath := filepath.Join("./assets", filePath)
+	fullPath = strings.ReplaceAll(fullPath, "\\", "/")
+
+	// Clean and validate path is within assets directory
+	cleanPath := filepath.Clean(fullPath)
+	cleanPath = strings.ReplaceAll(cleanPath, "\\", "/")
+	if !strings.HasPrefix(cleanPath, "./assets") && !strings.HasPrefix(cleanPath, "assets") {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Access denied - invalid path",
+			nil,
+		))
+		return
+	}
+
+	// Call service to delete with ownership validation
+	err := service.MediaDeleteByPath(fullPath, systemContext)
+	if err != nil {
+		systemContext.Logger.Error("Failed to delete media by path", zap.Error(err), zap.String("path", fullPath))
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	systemContext.Logger.Info("Media deleted successfully", zap.String("path", fullPath))
 	utils.SendSuccessMessageResponse(c, "Media deleted successfully")
 }
 
@@ -278,16 +291,16 @@ func MediaAPIInit(r *gin.Engine) {
 	protectedGroup.Use(middleware.JWTAuthMiddleware())
 	{
 		protectedGroup.POST("/upload", mediaFileUploadHandler)
-		protectedGroup.DELETE("/delete/:id", mediaDeleteHandler)
 	}
 
 	// Unprotected endpoints
 	r.POST("/api/v1/media/list", mediaListHandler)
 
-	// Secured file serving endpoint
+	// Secured file serving and deletion endpoint
 	assetsGroup := r.Group("/assets")
 	assetsGroup.Use(middleware.JWTAuthMiddleware())
 	{
 		assetsGroup.GET("/*filePath", mediaFileFileServerHandler)
+		assetsGroup.DELETE("/*filePath", mediaDeleteByPathHandler)
 	}
 }
