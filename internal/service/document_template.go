@@ -492,7 +492,9 @@ func documentTemplateProcessHTML(template *database.DocumentTemplate, data bson.
 		sortedKeys := documentTemplateSortKeysByDepth(template.EmbeddedHtml)
 
 		for _, key := range sortedKeys {
+			fmt.Println(key)
 			embeddedTemplate := template.EmbeddedHtml[key]
+			fmt.Println(embeddedTemplate)
 			processedEmbedded := documentTemplateProcessEmbeddedHtml(key, embeddedTemplate, processedData, template.EmbeddedHtml)
 
 			// Update the payload with rendered HTML
@@ -617,6 +619,7 @@ func documentTemplateProcessFilename(filename string, data bson.M) string {
 func documentTemplateProcessEmbeddedHtml(key string, embeddedHtml string, data bson.M, embeddedHtmlMap map[string]string) string {
 	// Navigate to the data using the key path
 	value := documentTemplateGetValueByPath(data, key)
+	fmt.Println(value)
 	if value == nil {
 		return ""
 	}
@@ -648,10 +651,11 @@ func documentTemplateProcessEmbeddedHtml(key string, embeddedHtml string, data b
 
 				// Process this item's HTML
 				itemHtml := embeddedHtml
+				fmt.Println(key)
+				fmt.Println(embeddedHtmlMap)
 
 				// First, recursively process any nested embeddedHtml placeholders
 				itemHtml = documentTemplateProcessNestedEmbedded(itemHtml, key, itemMap, embeddedHtmlMap)
-
 				// Then replace simple variables for this item
 				itemHtml = documentTemplateReplaceNestedVariables(itemHtml, key, itemMap)
 				results = append(results, itemHtml)
@@ -698,6 +702,8 @@ func documentTemplateProcessNestedEmbedded(html string, parentKey string, itemDa
 		if strings.HasPrefix(nestedKey, parentKey+".") {
 			placeholder := fmt.Sprintf("{{%s}}", nestedKey)
 
+			fmt.Println(placeholder)
+
 			// Check if this placeholder exists in the current HTML
 			if strings.Contains(html, placeholder) {
 				// Extract the field name from the nested key (e.g., "areas.areaMaterials" -> "areaMaterials")
@@ -720,6 +726,8 @@ func documentTemplateProcessNestedEmbedded(html string, parentKey string, itemDa
 					// Field doesn't exist, replace with empty string
 					html = strings.ReplaceAll(html, placeholder, "")
 				}
+			} else {
+				fmt.Println(placeholder, "not contain")
 			}
 		}
 	}

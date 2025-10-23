@@ -87,14 +87,9 @@ func MediaDeleteByPath(filePath string, systemContext *model.SystemContext) erro
 	var doc database.Media
 	err := collection.FindOne(context.Background(), filter).Decode(&doc)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return utils.SystemError(
-				enum.ErrorCodeNotFound,
-				"Media file not found or you don't have permission to delete it",
-				map[string]interface{}{"path": filePath},
-			)
+		if err != mongo.ErrNoDocuments {
+			return err
 		}
-		return err
 	}
 
 	// Delete from database

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -166,6 +167,8 @@ func documentTemplatePreviewHandler(c *gin.Context) {
 
 	// TODO: Get companyID from authenticated user context
 	var companyID *primitive.ObjectID = nil
+
+	fmt.Println(data["media"])
 
 	html, err := service.DocumentTemplatePreview(templateType, data, companyID, systemContext)
 	if err != nil {
