@@ -15,7 +15,7 @@ type Folder struct {
 	Description string              `bson:"description" json:"description"`
 	Remark      string              `bson:"remark" json:"remark"`
 	Status      string              `bson:"status" json:"status"`
-	Media       []SystemMedia       `bson:"media" json:"media"`
+	Media       []QuotationMedia    `bson:"media" json:"media"`
 	Areas       []SystemArea        `bson:"areas" json:"areas"`
 	Company     *primitive.ObjectID `bson:"company" json:"company"`
 	CreatedAt   time.Time           `bson:"createdAt" json:"createdAt"`

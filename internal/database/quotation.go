@@ -24,11 +24,17 @@ type Quotation struct {
 	TotalDiscount         float64                  `bson:"totalDiscount" json:"totalDiscount"`
 	TotalAdditionalCharge float64                  `bson:"totalAdditionalCharge" json:"totalAdditionalCharge"`
 	TotalNettCharge       float64                  `bson:"totalNettCharge" json:"totalNettCharge"`
-	Media                 []SystemMedia            `bson:"media" json:"media"`
+	Media                 []QuotationMedia         `bson:"media" json:"media"`
 	Company               *primitive.ObjectID      `bson:"company" json:"company"`
 	CreatedAt             time.Time                `bson:"createdAt" json:"createdAt"`
 	CreatedBy             primitive.ObjectID       `bson:"createdBy" json:"createdBy"`
 	UpdatedAt             time.Time                `bson:"updatedAt" json:"updatedAt"`
 	UpdatedBy             *primitive.ObjectID      `bson:"updatedBy" json:"updatedBy"`
 	IsDeleted             bool                     `bson:"isDeleted" json:"isDeleted"`
+}
+
+type QuotationMedia struct {
+	Path        string              `bson:"path" json:"path"`
+	Description string              `bson:"description" json:"description"`
+	SourceID    *primitive.ObjectID `bson:"sourceId" json:"sourceId"`
 }

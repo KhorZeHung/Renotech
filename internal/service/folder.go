@@ -391,7 +391,7 @@ func generateUniqueFolderName(baseName string, systemContext *model.SystemContex
 	return "", utils.SystemError(enum.ErrorCodeValidation, "Unable to generate unique name", nil)
 }
 
-func validateFolderMedia(media []database.SystemMedia, systemContext *model.SystemContext) error {
+func validateFolderMedia(media []database.QuotationMedia, systemContext *model.SystemContext) error {
 	if len(media) > 0 {
 		mediaCollection := systemContext.MongoDB.Collection("media")
 
