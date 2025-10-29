@@ -98,6 +98,8 @@ func mediaFileUploadHandler(c *gin.Context) {
 		return
 	}
 
+	filePath = "https://renotech.space/" + filePath
+
 	input := database.Media{
 		Name:      fileName,
 		Extension: filepath.Ext(file.Filename),
