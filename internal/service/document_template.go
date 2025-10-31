@@ -903,8 +903,25 @@ func documentTemplateExtractVariables(html string) []string {
 	return variables
 }
 
+// documentTemplateCountImages counts the number of <img> tags in HTML
+func documentTemplateCountImages(html string) int {
+	re := regexp.MustCompile(`(?i)<img[^>]*>`)
+	matches := re.FindAllString(html, -1)
+	return len(matches)
+}
+
 func documentTemplateHTMLToPDF(html string, res *[]byte) chromedp.Tasks {
-	return chromedp.Tasks{
+	// Count images and calculate wait time
+	imageCount := documentTemplateCountImages(html)
+
+	// Base wait: 500ms + 300ms per image, capped at 4500ms
+	// This leaves 500ms buffer within the 5-second limit
+	waitTime := 500 + (imageCount * 300)
+	if waitTime > 4500 {
+		waitTime = 4500
+	}
+
+	tasks := chromedp.Tasks{
 		chromedp.Navigate("about:blank"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			frameTree, err := page.GetFrameTree().Do(ctx)
@@ -913,19 +930,59 @@ func documentTemplateHTMLToPDF(html string, res *[]byte) chromedp.Tasks {
 			}
 			return page.SetDocumentContent(frameTree.Frame.ID, html).Do(ctx)
 		}),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			buf, _, err := page.PrintToPDF().
-				WithPrintBackground(true).
-				WithPaperWidth(8.27).
-				WithPaperHeight(11.7).
-				Do(ctx)
-			if err != nil {
-				return err
-			}
-			*res = buf
-			return nil
-		}),
 	}
+
+	// Only add waiting if there are images
+	if imageCount > 0 {
+		tasks = append(tasks,
+			// Wait for body to be ready
+			chromedp.WaitReady("body", chromedp.ByQuery),
+			// Wait for all images to complete loading
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				// JavaScript to wait for all images to load
+				var imagesLoaded bool
+				err := chromedp.Evaluate(`
+					(function() {
+						var images = document.querySelectorAll('img');
+						if (images.length === 0) return true;
+
+						return Array.from(images).every(function(img) {
+							return img.complete && img.naturalHeight !== 0;
+						});
+					})()
+				`, &imagesLoaded).Do(ctx)
+
+				if err != nil {
+					return err
+				}
+
+				// If images aren't loaded yet, wait with dynamic timeout
+				if !imagesLoaded {
+					time.Sleep(time.Duration(waitTime) * time.Millisecond)
+				}
+
+				return nil
+			}),
+			// Additional small buffer to ensure rendering is complete
+			chromedp.Sleep(200*time.Millisecond),
+		)
+	}
+
+	// Add PDF generation task
+	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+		buf, _, err := page.PrintToPDF().
+			WithPrintBackground(true).
+			WithPaperWidth(8.27).
+			WithPaperHeight(11.7).
+			Do(ctx)
+		if err != nil {
+			return err
+		}
+		*res = buf
+		return nil
+	}))
+
+	return tasks
 }
 
 func documentTemplateWrapForPreview(content string) string {
