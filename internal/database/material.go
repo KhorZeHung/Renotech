@@ -8,32 +8,56 @@ import (
 )
 
 type Material struct {
-	ID                  *primitive.ObjectID `bson:"_id,omitempty" json:"_id,omitempty"`
-	Name                string              `bson:"name" json:"name"`
-	ClientDisplayName   string              `bson:"clientDisplayName" json:"clientDisplayName"`
-	SupplierDisplayName string              `bson:"supplierDisplayName" json:"supplierDisplayName"`
-	Template            []MaterialTemplate  `bson:"template" json:"template"`
-	Type                enum.MaterialType   `bson:"type" json:"type"`
-	Supplier            *primitive.ObjectID `bson:"supplier" json:"supplier"`
-	Brand               string              `bson:"brand" json:"brand"`
-	Unit                string              `bson:"unit" json:"unit"`
-	CostPerUnit         float64             `bson:"costPerUnit" json:"costPerUnit"`
-	PricePerUnit        float64             `bson:"pricePerUnit" json:"pricePerUnit"`
-	Tags                []string            `bson:"tags" json:"tags"`
-	Media               []SystemMedia       `bson:"media" json:"media"`
-	Company             primitive.ObjectID  `bson:"company" json:"company"`
-	Status              enum.MaterialStatus `bson:"status" json:"status"`
-	Remark              string              `bson:"remark" json:"remark"`
-	Description         string              `bson:"description" json:"description"`
-	CreatedAt           time.Time           `bson:"createdAt" json:"createdAt"`
-	CreatedBy           primitive.ObjectID  `bson:"createdBy" json:"createdBy"`
-	UpdatedAt           time.Time           `bson:"updatedAt" json:"updatedAt"`
-	UpdatedBy           primitive.ObjectID  `bson:"updatedBy" json:"updatedBy"`
-	IsDeleted           bool                `bson:"isDeleted" json:"isDeleted"`
+	ID              *primitive.ObjectID      `bson:"_id,omitempty" json:"_id,omitempty"`
+	Name            string                   `bson:"name" json:"name"` // unique by supplier, company
+	QuotationConfig *MaterialQuotationConfig `bson:"quotationConfig" json:"quotationConfig"`
+	OrderConfig     *MaterialOrderConfig     `bson:"orderConfig" json:"orderConfig"`
+	Supplier        *primitive.ObjectID      `bson:"supplier" json:"supplier"`
+	Template        []MaterialTemplate       `bson:"template" json:"template"`
+	Type            enum.MaterialType        `bson:"type" json:"type"`
+	Brand           string                   `bson:"brand" json:"brand"`
+	Unit            string                   `bson:"unit" json:"unit"`
+	CostPerUnit     float64                  `bson:"costPerUnit" json:"costPerUnit"`
+	PricePerUnit    float64                  `bson:"pricePerUnit" json:"pricePerUnit"`
+	Tags            []string                 `bson:"tags" json:"tags"`
+	Media           []SystemMedia            `bson:"media" json:"media"`
+	Company         primitive.ObjectID       `bson:"company" json:"company"`
+	Status          enum.MaterialStatus      `bson:"status" json:"status"`
+	Remark          string                   `bson:"remark" json:"remark"`
+	CreatedAt       time.Time                `bson:"createdAt" json:"createdAt"`
+	CreatedBy       primitive.ObjectID       `bson:"createdBy" json:"createdBy"`
+	UpdatedAt       time.Time                `bson:"updatedAt" json:"updatedAt"`
+	UpdatedBy       primitive.ObjectID       `bson:"updatedBy" json:"updatedBy"`
+	IsDeleted       bool                     `bson:"isDeleted" json:"isDeleted"`
 }
 
 type MaterialTemplate struct {
-	Material        primitive.ObjectID `json:"material" bson:"material"`
-	MaterialDoc     Material           `json:"materialDoc" bson:"materialDoc"`
-	DefaultQuantity float64            `json:"defaultQuantity" bson:"defaultQuantity"`
+	Material        primitive.ObjectID  `json:"material" bson:"material"`
+	MaterialDoc     MaterialTemplateDoc `json:"materialDoc" bson:"materialDoc"`
+	DefaultQuantity float64             `json:"defaultQuantity" bson:"defaultQuantity"`
+}
+
+type MaterialTemplateDoc struct {
+	ID           *primitive.ObjectID `bson:"_id,omitempty" json:"_id,omitempty"`
+	Name         string              `bson:"name" json:"name"` // unique by supplier, company
+	DisplayName  string              `bson:"displayName" json:"displayName"`
+	Type         enum.MaterialType   `bson:"type" json:"type"`
+	Brand        string              `bson:"brand" json:"brand"`
+	Unit         string              `bson:"unit" json:"unit"`
+	CostPerUnit  float64             `bson:"costPerUnit" json:"costPerUnit"`
+	PricePerUnit float64             `bson:"pricePerUnit" json:"pricePerUnit"`
+	Tags         []string            `bson:"tags" json:"tags"`
+	Media        []SystemMedia       `bson:"media" json:"media"`
+	Remark       string              `bson:"remark" json:"remark"`
+	Description  string              `bson:"description" json:"description"`
+}
+
+type MaterialQuotationConfig struct {
+	DisplayName string `json:"displayName" bson:"displayName"`
+	Description string `json:"description" bson:"description"`
+}
+
+type MaterialOrderConfig struct {
+	DisplayName string `json:"displayName" bson:"displayName"`
+	Description string `json:"description" bson:"description"`
 }

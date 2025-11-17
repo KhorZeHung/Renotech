@@ -9,7 +9,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 	"renotech.com.my/internal/database"
 	"renotech.com.my/internal/enum"
@@ -25,12 +24,6 @@ func materialTenantCreateValidation(input *database.Material, systemContext *mod
 	if strings.TrimSpace(input.Name) == "" {
 		return utils.SystemError(enum.ErrorCodeValidation, "Name is required", nil)
 	}
-	if strings.TrimSpace(input.ClientDisplayName) == "" {
-		return utils.SystemError(enum.ErrorCodeValidation, "Client display name is required", nil)
-	}
-	if strings.TrimSpace(input.SupplierDisplayName) == "" {
-		return utils.SystemError(enum.ErrorCodeValidation, "Supplier display name is required", nil)
-	}
 	if input.Type == "" {
 		return utils.SystemError(enum.ErrorCodeValidation, "Type is required", nil)
 	}
@@ -42,24 +35,6 @@ func materialTenantCreateValidation(input *database.Material, systemContext *mod
 	}
 	if input.PricePerUnit <= 0 {
 		return utils.SystemError(enum.ErrorCodeValidation, "Price per unit must be greater than 0", nil)
-	}
-	if input.Status == "" {
-		return utils.SystemError(enum.ErrorCodeValidation, "Status is required", nil)
-	}
-
-	// Validate supplier if provided - must belong to user's company
-	if input.Supplier != nil {
-		supplierCollection := systemContext.MongoDB.Collection("supplier")
-		var supplierDoc database.Supplier
-		err := supplierCollection.FindOne(context.Background(), bson.M{
-			"_id":       input.Supplier,
-			"company":   *systemContext.User.Company,
-			"isDeleted": false,
-		}).Decode(&supplierDoc)
-
-		if err != nil {
-			return utils.SystemError(enum.ErrorCodeValidation, "Supplier not found or does not belong to your company", nil)
-		}
 	}
 
 	// Type-specific validation
@@ -85,7 +60,7 @@ func materialTenantCreateValidation(input *database.Material, systemContext *mod
 
 		// Validate each template material
 		for i, template := range input.Template {
-			var materialDoc database.Material
+			var materialDoc database.MaterialTemplateDoc
 			err := collection.FindOne(context.Background(), bson.M{
 				"_id":       template.Material,
 				"company":   *systemContext.User.Company,
@@ -109,15 +84,6 @@ func materialTenantCreateValidation(input *database.Material, systemContext *mod
 				)
 			}
 
-			// Template material must be active
-			if materialDoc.Status != enum.MaterialStatusActive {
-				return utils.SystemError(
-					enum.ErrorCodeValidation,
-					"Template materials must reference active materials only",
-					map[string]interface{}{"templateIndex": i, "materialName": materialDoc.Name, "status": materialDoc.Status},
-				)
-			}
-
 			input.Template[i].MaterialDoc = materialDoc
 		}
 	default:
@@ -128,32 +94,45 @@ func materialTenantCreateValidation(input *database.Material, systemContext *mod
 		)
 	}
 
-	// // Check for duplicate material name within the same company and supplier
-	// filter := bson.M{
-	// 	"name":      input.Name,
-	// 	"company":   *systemContext.User.Company,
-	// 	"isDeleted": false,
-	// }
+	// Check for duplicate material name within the same company
+	// Rules: Same name allowed if:
+	// 1. Each has different supplier (non-null), OR
+	// 2. Only one instance has null supplier
+	filter := bson.M{
+		"name":      input.Name,
+		"company":   *systemContext.User.Company,
+		"isDeleted": false,
+	}
 
-	// // Add supplier to filter if provided
-	// if input.Supplier != nil {
-	// 	filter["supplier"] = input.Supplier
-	// } else {
-	// 	filter["supplier"] = bson.M{"$exists": false}
-	// }
-
-	// count, err := collection.CountDocuments(context.Background(), filter)
-	// if err != nil {
-	// 	return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
-	// }
-
-	// if count > 0 {
-	// 	return utils.SystemError(
-	// 		enum.ErrorCodeValidation,
-	// 		"Material name already exists within your company and supplier scope",
-	// 		map[string]interface{}{"name": input.Name},
-	// 	)
-	// }
+	// If input has a supplier, check if this supplier already has a material with this name
+	if input.Supplier != nil {
+		filter["supplier"] = input.Supplier
+		count, err := collection.CountDocuments(context.Background(), filter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
+		}
+		if count > 0 {
+			return utils.SystemError(
+				enum.ErrorCodeValidation,
+				"Material name already exists for this supplier",
+				map[string]interface{}{"name": input.Name},
+			)
+		}
+	} else {
+		// If input has null supplier, check if there's already a material with null supplier and same name
+		filter["supplier"] = bson.M{"$exists": false}
+		count, err := collection.CountDocuments(context.Background(), filter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
+		}
+		if count > 0 {
+			return utils.SystemError(
+				enum.ErrorCodeValidation,
+				"Material name with no supplier already exists",
+				map[string]interface{}{"name": input.Name},
+			)
+		}
+	}
 
 	// Set company from user context and auto-fill fields
 	input.Company = *systemContext.User.Company
@@ -233,22 +212,13 @@ func materialTenantUpdateValidation(input *database.Material, systemContext *mod
 		return utils.SystemError(enum.ErrorCodeUnauthorized, "Material not found or access denied", nil)
 	}
 
-	// If changing status from active to another status, check if material is referenced in templates
-	if doc.Status == enum.MaterialStatusActive && input.Status != enum.MaterialStatusActive {
-		if err := checkMaterialInTemplates(*input.ID, systemContext); err != nil {
-			return err
-		}
+	if err := checkMaterialInTemplates(*input.ID, systemContext); err != nil {
+		return err
 	}
 
 	// Validate required fields
 	if strings.TrimSpace(input.Name) == "" {
 		return utils.SystemError(enum.ErrorCodeValidation, "Name is required", nil)
-	}
-	if strings.TrimSpace(input.ClientDisplayName) == "" {
-		return utils.SystemError(enum.ErrorCodeValidation, "Client display name is required", nil)
-	}
-	if strings.TrimSpace(input.SupplierDisplayName) == "" {
-		return utils.SystemError(enum.ErrorCodeValidation, "Supplier display name is required", nil)
 	}
 	if input.Type == "" {
 		return utils.SystemError(enum.ErrorCodeValidation, "Type is required", nil)
@@ -261,24 +231,6 @@ func materialTenantUpdateValidation(input *database.Material, systemContext *mod
 	}
 	if input.PricePerUnit <= 0 {
 		return utils.SystemError(enum.ErrorCodeValidation, "Price per unit must be greater than 0", nil)
-	}
-	if input.Status == "" {
-		return utils.SystemError(enum.ErrorCodeValidation, "Status is required", nil)
-	}
-
-	// Validate supplier if provided - must belong to user's company
-	if input.Supplier != nil {
-		supplierCollection := systemContext.MongoDB.Collection("supplier")
-		var supplierDoc database.Supplier
-		err := supplierCollection.FindOne(context.Background(), bson.M{
-			"_id":       input.Supplier,
-			"company":   *systemContext.User.Company,
-			"isDeleted": false,
-		}).Decode(&supplierDoc)
-
-		if err != nil {
-			return utils.SystemError(enum.ErrorCodeValidation, "Supplier not found or does not belong to your company", nil)
-		}
 	}
 
 	// Type-specific validation
@@ -304,7 +256,7 @@ func materialTenantUpdateValidation(input *database.Material, systemContext *mod
 
 		// Validate each template material
 		for i, template := range input.Template {
-			var materialDoc database.Material
+			var materialDoc database.MaterialTemplateDoc
 			err := collection.FindOne(context.Background(), bson.M{
 				"_id":       template.Material,
 				"company":   *systemContext.User.Company,
@@ -328,15 +280,6 @@ func materialTenantUpdateValidation(input *database.Material, systemContext *mod
 				)
 			}
 
-			// Template material must be active
-			if materialDoc.Status != enum.MaterialStatusActive {
-				return utils.SystemError(
-					enum.ErrorCodeValidation,
-					"Template materials must reference active materials only",
-					map[string]interface{}{"templateIndex": i, "materialName": materialDoc.Name, "status": materialDoc.Status},
-				)
-			}
-
 			input.Template[i].MaterialDoc = materialDoc
 		}
 	default:
@@ -347,33 +290,46 @@ func materialTenantUpdateValidation(input *database.Material, systemContext *mod
 		)
 	}
 
-	// // Check for duplicate material name within the same company and supplier (excluding current material)
-	// nameFilter := bson.M{
-	// 	"name":      input.Name,
-	// 	"company":   *systemContext.User.Company,
-	// 	"isDeleted": false,
-	// 	"_id":       bson.M{"$ne": input.ID}, // Exclude current material
-	// }
+	// Check for duplicate material name within the same company (excluding current material)
+	// Rules: Same name allowed if:
+	// 1. Each has different supplier (non-null), OR
+	// 2. Only one instance has null supplier
+	nameFilter := bson.M{
+		"name":      input.Name,
+		"company":   *systemContext.User.Company,
+		"isDeleted": false,
+		"_id":       bson.M{"$ne": input.ID}, // Exclude current material
+	}
 
-	// // Add supplier to filter if provided
-	// if input.Supplier != nil {
-	// 	nameFilter["supplier"] = input.Supplier
-	// } else {
-	// 	nameFilter["supplier"] = bson.M{"$exists": false}
-	// }
-
-	// count, err := collection.CountDocuments(context.Background(), nameFilter)
-	// if err != nil {
-	// 	return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
-	// }
-
-	// if count > 0 {
-	// 	return utils.SystemError(
-	// 		enum.ErrorCodeValidation,
-	// 		"Material name already exists within your company and supplier scope",
-	// 		map[string]interface{}{"name": input.Name},
-	// 	)
-	// }
+	// If input has a supplier, check if this supplier already has a material with this name
+	if input.Supplier != nil {
+		nameFilter["supplier"] = input.Supplier
+		count, err := collection.CountDocuments(context.Background(), nameFilter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
+		}
+		if count > 0 {
+			return utils.SystemError(
+				enum.ErrorCodeValidation,
+				"Material name already exists for this supplier",
+				map[string]interface{}{"name": input.Name},
+			)
+		}
+	} else {
+		// If input has null supplier, check if there's already a material with null supplier and same name
+		nameFilter["supplier"] = bson.M{"$exists": false}
+		count, err := collection.CountDocuments(context.Background(), nameFilter)
+		if err != nil {
+			return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate material name", nil)
+		}
+		if count > 0 {
+			return utils.SystemError(
+				enum.ErrorCodeValidation,
+				"Material name with no supplier already exists",
+				map[string]interface{}{"name": input.Name},
+			)
+		}
+	}
 
 	return nil
 }
@@ -394,22 +350,20 @@ func MaterialTenantUpdate(input *database.Material, systemContext *model.SystemC
 
 	update := bson.M{
 		"$set": bson.M{
-			"name":                input.Name,
-			"clientDisplayName":   input.ClientDisplayName,
-			"supplierDisplayName": input.SupplierDisplayName,
-			"template":            input.Template,
-			"type":                input.Type,
-			"supplier":            input.Supplier,
-			"brand":               input.Brand,
-			"unit":                input.Unit,
-			"costPerUnit":         input.CostPerUnit,
-			"pricePerUnit":        input.PricePerUnit,
-			"media":               input.Media,
-			"status":              input.Status,
-			"remark":              input.Remark,
-			"description":         input.Description,
-			"updatedAt":           time.Now(),
-			"updatedBy":           *systemContext.User.ID,
+			"name":            input.Name,
+			"quotationConfig": input.QuotationConfig,
+			"orderConfig":     input.OrderConfig,
+			"template":        input.Template,
+			"type":            input.Type,
+			"brand":           input.Brand,
+			"unit":            input.Unit,
+			"costPerUnit":     input.CostPerUnit,
+			"pricePerUnit":    input.PricePerUnit,
+			"media":           input.Media,
+			"status":          input.Status,
+			"remark":          input.Remark,
+			"updatedAt":       time.Now(),
+			"updatedBy":       *systemContext.User.ID,
 		},
 	}
 
@@ -427,7 +381,7 @@ func MaterialTenantUpdate(input *database.Material, systemContext *model.SystemC
 	return &updatedDoc, nil
 }
 
-func MaterialTenantGetByID(materialID primitive.ObjectID, systemContext *model.SystemContext) (*database.Material, error) {
+func MaterialTenantGetByID(materialID primitive.ObjectID, systemContext *model.SystemContext) (*bson.M, error) {
 	collection := systemContext.MongoDB.Collection("material")
 
 	filter := bson.M{
@@ -436,13 +390,62 @@ func MaterialTenantGetByID(materialID primitive.ObjectID, systemContext *model.S
 		"isDeleted": false,
 	}
 
-	var doc database.Material
-	err := collection.FindOne(context.Background(), filter).Decode(&doc)
+	// Build aggregation pipeline to populate supplier
+	pipeline := mongo.Pipeline{
+		// Match stage - filter material by ID and company
+		{{Key: "$match", Value: filter}},
+
+		// Lookup stage - join supplier collection
+		{{Key: "$lookup", Value: bson.M{
+			"from":         "supplier",
+			"localField":   "supplier",
+			"foreignField": "_id",
+			"as":           "supplierDoc",
+		}}},
+
+		// Unwind stage - convert array to object (preserve null)
+		{{Key: "$unwind", Value: bson.M{
+			"path":                       "$supplierDoc",
+			"preserveNullAndEmptyArrays": true,
+		}}},
+
+		// AddFields stage - project only selected supplier fields
+		{{Key: "$addFields", Value: bson.M{
+			"supplierDoc": bson.M{
+				"$cond": bson.A{
+					bson.M{"$eq": bson.A{"$supplierDoc", bson.M{}}},
+					nil,
+					bson.M{
+						"_id":         "$supplierDoc._id",
+						"name":        "$supplierDoc.name",
+						"displayName": "$supplierDoc.displayName",
+					},
+				},
+			},
+		}}},
+	}
+
+	// Execute aggregation
+	cursor, err := collection.Aggregate(context.Background(), pipeline)
 	if err != nil {
+		systemContext.Logger.Error("service.MaterialTenantGetByID", zap.Error(err))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve material", nil)
+	}
+	defer cursor.Close(context.Background())
+
+	// Decode result
+	var results []bson.M
+	if err = cursor.All(context.Background(), &results); err != nil {
+		systemContext.Logger.Error("service.MaterialTenantGetByID", zap.Error(err))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to decode material", nil)
+	}
+
+	// Check if material was found
+	if len(results) == 0 {
 		return nil, utils.SystemError(enum.ErrorCodeNotFound, "Material not found", nil)
 	}
 
-	return &doc, nil
+	return &results[0], nil
 }
 
 func MaterialTenantList(input model.MaterialListRequest, systemContext *model.SystemContext) (*model.MaterialListResponse, error) {
@@ -469,19 +472,8 @@ func MaterialTenantList(input model.MaterialListRequest, systemContext *model.Sy
 	if strings.TrimSpace(input.Name) != "" {
 		filter["name"] = primitive.Regex{Pattern: input.Name, Options: "i"}
 	}
-	if strings.TrimSpace(input.ClientDisplayName) != "" {
-		filter["clientDisplayName"] = primitive.Regex{Pattern: input.ClientDisplayName, Options: "i"}
-	}
-	if strings.TrimSpace(input.SupplierDisplayName) != "" {
-		filter["supplierDisplayName"] = primitive.Regex{Pattern: input.SupplierDisplayName, Options: "i"}
-	}
 	if strings.TrimSpace(input.Type) != "" {
 		filter["type"] = input.Type
-	}
-	if strings.TrimSpace(input.Supplier) != "" {
-		if supplierID, err := primitive.ObjectIDFromHex(input.Supplier); err == nil {
-			filter["supplier"] = supplierID
-		}
 	}
 	if strings.TrimSpace(input.Brand) != "" {
 		filter["brand"] = primitive.Regex{Pattern: input.Brand, Options: "i"}
@@ -491,16 +483,6 @@ func MaterialTenantList(input model.MaterialListRequest, systemContext *model.Sy
 	}
 	if strings.TrimSpace(input.Status) != "" {
 		filter["status"] = input.Status
-	}
-
-	// Add category filter
-	if strings.TrimSpace(input.Categories) != "" {
-		filter["categories"] = bson.M{"$in": []string{input.Categories}}
-	}
-
-	// Add tag filter
-	if strings.TrimSpace(input.Tags) != "" {
-		filter["tags"] = bson.M{"$in": []string{input.Tags}}
 	}
 
 	// Add cost per unit filter with MongoDB operators
@@ -545,6 +527,76 @@ func MaterialTenantList(input model.MaterialListRequest, systemContext *model.Sy
 	return executeMaterialList(collection, filter, input, systemContext)
 }
 
+func MaterialTenantGetAvailableSuppliers(materialName string, systemContext *model.SystemContext) ([]database.Supplier, error) {
+	// Validate input
+	if strings.TrimSpace(materialName) == "" {
+		return nil, utils.SystemError(enum.ErrorCodeValidation, "Material name is required", nil)
+	}
+
+	// Check if user has a company
+	if systemContext.User.Company == nil {
+		return []database.Supplier{}, nil
+	}
+
+	materialCollection := systemContext.MongoDB.Collection("material")
+	supplierCollection := systemContext.MongoDB.Collection("supplier")
+
+	// Find all materials with the given name in the user's company
+	filter := bson.M{
+		"name":      materialName,
+		"company":   *systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	cursor, err := materialCollection.Find(context.Background(), filter)
+	if err != nil {
+		systemContext.Logger.Error("service.MaterialTenantGetAvailableSuppliers - Failed to find materials", zap.Error(err))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve materials", nil)
+	}
+	defer cursor.Close(context.Background())
+
+	// Extract supplier IDs from materials
+	var materials []database.Material
+	if err = cursor.All(context.Background(), &materials); err != nil {
+		systemContext.Logger.Error("service.MaterialTenantGetAvailableSuppliers - Failed to decode materials", zap.Error(err))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to decode materials", nil)
+	}
+
+	// Collect supplier IDs that already have this material
+	usedSupplierIDs := []primitive.ObjectID{}
+	for _, material := range materials {
+		if material.Supplier != nil {
+			usedSupplierIDs = append(usedSupplierIDs, *material.Supplier)
+		}
+	}
+
+	// Query suppliers that are NOT in the used supplier list
+	supplierFilter := bson.M{
+		"company":   *systemContext.User.Company,
+		"isDeleted": false,
+	}
+
+	// Exclude suppliers that already have this material name
+	if len(usedSupplierIDs) > 0 {
+		supplierFilter["_id"] = bson.M{"$nin": usedSupplierIDs}
+	}
+
+	cursor, err = supplierCollection.Find(context.Background(), supplierFilter)
+	if err != nil {
+		systemContext.Logger.Error("service.MaterialTenantGetAvailableSuppliers - Failed to find suppliers", zap.Error(err))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve suppliers", nil)
+	}
+	defer cursor.Close(context.Background())
+
+	var availableSuppliers []database.Supplier
+	if err = cursor.All(context.Background(), &availableSuppliers); err != nil {
+		systemContext.Logger.Error("service.MaterialTenantGetAvailableSuppliers - Failed to decode suppliers", zap.Error(err))
+		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to decode suppliers", nil)
+	}
+
+	return availableSuppliers, nil
+}
+
 // Shared service
 func MaterialDelete(materialID primitive.ObjectID, systemContext *model.SystemContext) error {
 	collection := systemContext.MongoDB.Collection("material")
@@ -586,13 +638,6 @@ func MaterialDelete(materialID primitive.ObjectID, systemContext *model.SystemCo
 
 // Helper functions
 func executeMaterialList(collection *mongo.Collection, filter bson.M, input model.MaterialListRequest, systemContext *model.SystemContext) (*model.MaterialListResponse, error) {
-	// Get total count
-	total, err := collection.CountDocuments(context.Background(), filter)
-	if err != nil {
-		systemContext.Logger.Error("service.MaterialList", zap.Error(err))
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to count materials", nil)
-	}
-
 	// Set default pagination values
 	page := input.Page
 	if page <= 0 {
@@ -608,7 +653,6 @@ func executeMaterialList(collection *mongo.Collection, filter bson.M, input mode
 
 	// Calculate pagination
 	skip := (page - 1) * limit
-	totalPages := int(math.Ceil(float64(total) / float64(limit)))
 
 	// Build sort options - use bson.D to preserve order for multiple sort fields
 	var sortOptions bson.D
@@ -622,14 +666,57 @@ func executeMaterialList(collection *mongo.Collection, filter bson.M, input mode
 		sortOptions = bson.D{{Key: "createdAt", Value: 1}}
 	}
 
-	// Create find options
-	findOptions := options.Find().
-		SetSkip(int64(skip)).
-		SetLimit(int64(limit)).
-		SetSort(sortOptions)
+	// Build aggregation pipeline
+	pipeline := mongo.Pipeline{
+		// Match stage - filter materials
+		{{Key: "$match", Value: filter}},
 
-	// Execute query
-	cursor, err := collection.Find(context.Background(), filter, findOptions)
+		// Lookup stage - join supplier collection
+		{{Key: "$lookup", Value: bson.M{
+			"from":         "supplier",
+			"localField":   "supplier",
+			"foreignField": "_id",
+			"as":           "supplierDoc",
+		}}},
+
+		// Unwind stage - convert array to object (preserve null)
+		{{Key: "$unwind", Value: bson.M{
+			"path":                       "$supplierDoc",
+			"preserveNullAndEmptyArrays": true,
+		}}},
+
+		// AddFields stage - project only selected supplier fields
+		{{Key: "$addFields", Value: bson.M{
+			"supplierDoc": bson.M{
+				"$cond": bson.A{
+					bson.M{"$eq": bson.A{"$supplierDoc", bson.M{}}},
+					nil,
+					bson.M{
+						"_id":         "$supplierDoc._id",
+						"name":        "$supplierDoc.name",
+						"displayName": "$supplierDoc.displayName",
+					},
+				},
+			},
+		}}},
+
+		// Sort stage
+		{{Key: "$sort", Value: sortOptions}},
+
+		// Facet stage - handle count and data in single query
+		{{Key: "$facet", Value: bson.M{
+			"metadata": mongo.Pipeline{
+				{{Key: "$count", Value: "total"}},
+			},
+			"data": mongo.Pipeline{
+				{{Key: "$skip", Value: skip}},
+				{{Key: "$limit", Value: limit}},
+			},
+		}}},
+	}
+
+	// Execute aggregation
+	cursor, err := collection.Aggregate(context.Background(), pipeline)
 	if err != nil {
 		systemContext.Logger.Error("service.MaterialList", zap.Error(err))
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve materials", nil)
@@ -637,11 +724,42 @@ func executeMaterialList(collection *mongo.Collection, filter bson.M, input mode
 	defer cursor.Close(context.Background())
 
 	// Decode results
-	var materials []bson.M
-	if err = cursor.All(context.Background(), &materials); err != nil {
+	var results []bson.M
+	if err = cursor.All(context.Background(), &results); err != nil {
 		systemContext.Logger.Error("service.MaterialList", zap.Error(err))
 		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to decode materials", nil)
 	}
+
+	// Extract data and metadata from facet result
+	var materials []bson.M
+	var total int64 = 0
+
+	if len(results) > 0 {
+		result := results[0]
+
+		// Extract data
+		if data, ok := result["data"].(primitive.A); ok {
+			for _, item := range data {
+				if doc, ok := item.(bson.M); ok {
+					materials = append(materials, doc)
+				}
+			}
+		}
+
+		// Extract total count
+		if metadata, ok := result["metadata"].(primitive.A); ok && len(metadata) > 0 {
+			if metaDoc, ok := metadata[0].(bson.M); ok {
+				if count, ok := metaDoc["total"].(int32); ok {
+					total = int64(count)
+				} else if count, ok := metaDoc["total"].(int64); ok {
+					total = count
+				}
+			}
+		}
+	}
+
+	// Calculate total pages
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
 
 	response := &model.MaterialListResponse{
 		Data:       materials,

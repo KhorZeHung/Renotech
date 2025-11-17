@@ -16,9 +16,9 @@ type SystemAddress struct {
 	Line1    string `bson:"line1" json:"line1"`
 	Line2    string `bson:"line2" json:"line2"`
 	Line3    string `bson:"line3" json:"line3"`
-	Postcode string `bson:"postcode" json:"postcode"`
 	City     string `bson:"city" json:"city"`
 	State    string `bson:"state" json:"state"`
+	Postcode string `bson:"postcode" json:"postcode"`
 }
 
 type SystemArea struct {
@@ -71,4 +71,13 @@ type SystemClient struct {
 	Name    string `bson:"Nname" json:"name"`
 	Contact string `bson:"contact" json:"contact"`
 	Email   string `bson:"email" json:"email"`
+}
+
+type ProjectMaterialSummary struct {
+	MaterialID        *primitive.ObjectID    `bson:"materialId" json:"materialId"`               // Reference to Material
+	MaterialName      string                 `bson:"materialName" json:"materialName"`           // Denormalized for quick display
+	TotalRequired     float64                `bson:"totalRequired" json:"totalRequired"`         // Sum across all areas
+	TotalOrdered      float64                `bson:"totalOrdered" json:"totalOrdered"`           // Sum from all orders
+	ProcurementStatus enum.ProcurementStatus `bson:"procurementStatus" json:"procurementStatus"` // Status of procurement
+	LastOrderDate     *time.Time             `bson:"lastOrderDate" json:"lastOrderDate"`         // Last time this material was ordered
 }

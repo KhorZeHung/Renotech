@@ -12,13 +12,16 @@ type Order struct {
 	Project *primitive.ObjectID `bson:"project" json:"project"` // Optional: Original project reference
 	Company *primitive.ObjectID `bson:"company" json:"company"` // Tenant isolation
 
+	// Order Type & Source Tracking
+	OrderType       enum.OrderType `bson:"orderType" json:"orderType"`             // "project-material" or "standalone"
+
 	// Embedded Supplier Information (flexible - can be from system or external)
 	Supplier OrderSupplier `bson:"supplier" json:"supplier"`
 
 	// PO Basic Information
-	PONumber         string    `bson:"poNumber" json:"poNumber"` // Auto-generated unique PO number
-	OrderDate        time.Time `bson:"orderDate" json:"orderDate"`
-	ExpectedDelivery time.Time `bson:"expectedDelivery" json:"expectedDelivery"`
+	PONumber         string     `bson:"poNumber" json:"poNumber"` // Auto-generated unique PO number
+	OrderDate        *time.Time `bson:"orderDate" json:"orderDate"`
+	ExpectedDelivery *time.Time `bson:"expectedDelivery" json:"expectedDelivery"`
 
 	// Delivery Information
 	DeliveryAddress SystemAddress `bson:"deliveryAddress" json:"deliveryAddress"`
@@ -63,7 +66,8 @@ type OrderSupplier struct {
 }
 
 type OrderItem struct {
-	Material    *primitive.ObjectID `bson:"material" json:"material"` // Reference to material (optional)
+	Material    *primitive.ObjectID `bson:"material" json:"material"`       // Reference to material (optional)
+	ProjectArea *int                `bson:"projectArea" json:"projectArea"` // Which area in project (for tracking)
 	Name        string              `bson:"name" json:"name"`
 	Description string              `bson:"description" json:"description"`
 	Brand       string              `bson:"brand" json:"brand"`

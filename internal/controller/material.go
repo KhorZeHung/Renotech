@@ -147,6 +147,28 @@ func materialDeleteHandler(c *gin.Context) {
 	utils.SendSuccessMessageResponse(c, "Material deleted successfully")
 }
 
+func materialGetAvailableSuppliersHandler(c *gin.Context) {
+	systemContext := utils.GetSystemContextFromGin(c)
+
+	materialName := c.Query("name")
+	if materialName == "" {
+		utils.SendErrorResponse(c, utils.SystemError(
+			enum.ErrorCodeValidation,
+			"Material name query parameter is required",
+			nil,
+		))
+		return
+	}
+
+	result, err := service.MaterialTenantGetAvailableSuppliers(materialName, systemContext)
+	if err != nil {
+		utils.SendErrorResponse(c, err)
+		return
+	}
+
+	utils.SendSuccessResponse(c, result)
+}
+
 func MaterialAPIInit(r *gin.Engine) {
 	// Tenant routes (for company users to manage their own company's materials) - Protected
 	tenantGroup := r.Group("/api/v1/material")
@@ -157,5 +179,6 @@ func MaterialAPIInit(r *gin.Engine) {
 		tenantGroup.POST("/list", materialListHandler)
 		tenantGroup.PUT("", materialUpdateHandler)
 		tenantGroup.DELETE("/:id", materialDeleteHandler)
+		tenantGroup.GET("/available-suppliers", materialGetAvailableSuppliersHandler)
 	}
 }

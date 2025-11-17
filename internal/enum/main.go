@@ -9,6 +9,8 @@ type UserType string
 type ErrorCode string
 type OrderStatus string
 type OrderPriority string
+type OrderType string
+type ProcurementStatus string
 
 const (
 	ErrorCodeValidation   ErrorCode = "VALIDATION_ERROR"
@@ -69,4 +71,16 @@ const (
 	OrderPriorityMedium OrderPriority = "medium"
 	OrderPriorityHigh   OrderPriority = "high"
 	OrderPriorityUrgent OrderPriority = "urgent"
+)
+
+const (
+	OrderTypeProjectMaterial OrderType = "project-material"
+	OrderTypeStandalone      OrderType = "standalone"
+)
+
+const (
+	ProcurementStatusNotOrdered   ProcurementStatus = "not-ordered"
+	ProcurementStatusPartial      ProcurementStatus = "partial"
+	ProcurementStatusFullyOrdered ProcurementStatus = "fully-ordered"
+	ProcurementStatusOverOrdered  ProcurementStatus = "over-ordered"
 )

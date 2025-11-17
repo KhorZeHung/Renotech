@@ -11,7 +11,7 @@ type Quotation struct {
 	Folder                *primitive.ObjectID      `bson:"folder" json:"folder"`
 	Name                  string                   `bson:"name" json:"name"`
 	QuoteNo               string                   `bson:"quoteNo" json:"quoteNo"`
-	QuoteDate             time.Time                `bson:"quoteDate" json:"quoteDate"`
+	QuoteDate             string                   `bson:"quoteDate" json:"quoteDate"`
 	ValidDays             int                      `bson:"validDays" json:"validDays"`
 	Client                SystemClient             `bson:"client" json:"client"`
 	Budget                float64                  `bson:"budget" json:"budget"`

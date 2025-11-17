@@ -146,17 +146,17 @@ func SupplierTenantUpdate(input *database.Supplier, systemContext *model.SystemC
 
 	update := bson.M{
 		"$set": bson.M{
-			"label":            input.Label,
-			"name":             input.Name,
-			"contact":          input.Contact,
-			"email":            input.Email,
-			"logo":             input.Logo,
-			"tags":             input.Tags,
-			"description":      input.Description,
-			"officeAddress":    input.OfficeAddress,
-			"warehouseAddress": input.WarehouseAddress,
-			"updatedAt":        time.Now(),
-			"updatedBy":        systemContext.User.ID,
+			"displayName":   input.DisplayName,
+			"name":          input.Name,
+			"contact":       input.Contact,
+			"email":         input.Email,
+			"logo":          input.Logo,
+			"tags":          input.Tags,
+			"description":   input.Description,
+			"officeAddress": input.OfficeAddress,
+			"pickupAddress": input.PickupAddress,
+			"updatedAt":     time.Now(),
+			"updatedBy":     systemContext.User.ID,
 		},
 	}
 

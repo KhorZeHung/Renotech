@@ -47,14 +47,6 @@ func companyTenantCreateValidation(input *database.Company, systemContext *model
 		}
 	}
 
-	if len(input.ClientDisplayName) < 1 {
-		input.ClientDisplayName = input.Name
-	}
-
-	if len(input.SupplierDisplayName) < 1 {
-		input.SupplierDisplayName = input.Name
-	}
-
 	// Create company object with default values
 	input.Owner = systemContext.User.ID
 	input.IsDeleted = false
@@ -175,21 +167,19 @@ func CompanyTenantUpdate(input *database.Company, systemContext *model.SystemCon
 
 	value := bson.M{
 		"$set": bson.M{
-			"name":                input.Name,
-			"clientDisplayName":   input.ClientDisplayName,
-			"supplierDisplayName": input.SupplierDisplayName,
-			"address":             input.Address,
-			"website":             input.Website,
-			"email":               input.Email,
-			"description":         input.Description,
-			"owner":               input.Owner,
-			"logo":                input.Logo,
-			"registrationNo":      input.RegistrationNo,
-			"contact":             input.Contact,
-			"termCondition":       input.TermCondition,
-			"isEnabled":           input.IsEnabled,
-			"updatedAt":           time.Now(),
-			"updatedBy":           systemContext.User.ID,
+			"name":            input.Name,
+			"address":         input.Address,
+			"website":         input.Website,
+			"email":           input.Email,
+			"owner":           input.Owner,
+			"logo":            input.Logo,
+			"registrationNo":  input.RegistrationNo,
+			"contact":         input.Contact,
+			"quotationConfig": input.QuotationConfig,
+			"orderConfig":     input.OrderConfig,
+			"isEnabled":       input.IsEnabled,
+			"updatedAt":       time.Now(),
+			"updatedBy":       systemContext.User.ID,
 		},
 	}
 
@@ -225,202 +215,6 @@ func CompanyTenantGet(systemContext *model.SystemContext) (*database.Company, er
 	}
 
 	return &doc, nil
-}
-
-// Admin services
-func companyAdminCreateValidation(input *database.Company, systemContext *model.SystemContext) error {
-	collection := systemContext.MongoDB.Collection("company")
-
-	// Validate logo path if provided
-	if err := utils.ValidateFilePath(input.Logo); err != nil {
-		return err
-	}
-
-	// Check for duplicate company name (global scope)
-	if strings.TrimSpace(input.Name) != "" {
-		filter := bson.M{
-			"name":      input.Name,
-			"isDeleted": false,
-		}
-
-		count, err := collection.CountDocuments(context.Background(), filter)
-		if err != nil {
-			return utils.SystemError(enum.ErrorCodeInternal, "Failed to check for duplicate company name", nil)
-		}
-
-		if count > 0 {
-			return utils.SystemError(
-				enum.ErrorCodeValidation,
-				"Company name already exists",
-				map[string]interface{}{"name": input.Name},
-			)
-		}
-	}
-
-	return nil
-}
-
-func CompanyAdminCreate(input *database.Company, systemContext *model.SystemContext) (*database.Company, error) {
-	// Validate input
-	if err := companyAdminCreateValidation(input, systemContext); err != nil {
-		return nil, err
-	}
-	collection := systemContext.MongoDB.Collection("company")
-
-	// Create company object with default values
-	company := &database.Company{
-		Name:                input.Name,
-		ClientDisplayName:   input.ClientDisplayName,
-		SupplierDisplayName: input.SupplierDisplayName,
-		Address:             input.Address,
-		Website:             input.Website,
-		Owner:               input.Owner, // Allow admin to set any owner
-		Logo:                input.Logo,
-		Contact:             input.Contact,
-		TermCondition:       input.TermCondition,
-		IsDeleted:           false,
-		IsEnabled:           true,
-		CreatedAt:           time.Now(),
-		CreatedBy:           systemContext.User.ID,
-		UpdatedAt:           time.Now(),
-		UpdatedBy:           systemContext.User.ID,
-	}
-
-	result, err := collection.InsertOne(context.Background(), company)
-
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to create company", nil)
-	}
-
-	companyID := result.InsertedID.(primitive.ObjectID)
-
-	var doc database.Company
-	err = collection.FindOne(context.Background(), bson.M{"_id": companyID}).Decode(&doc)
-
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "Failed to retrieve company", nil)
-	}
-
-	return &doc, nil
-}
-
-func CompanyAdminUpdate(input *database.Company, systemContext *model.SystemContext) (*database.Company, error) {
-	// Validate input
-	if err := companyUpdateValidation(input, systemContext); err != nil {
-		return nil, err
-	}
-
-	// check if company exists
-	collection := systemContext.MongoDB.Collection("company")
-
-	filter := bson.M{
-		"_id":       input.ID,
-		"isDeleted": false,
-	}
-
-	var doc database.Company
-
-	_ = collection.FindOne(context.Background(), filter).Decode(&doc)
-
-	if doc.ID == nil {
-		return nil, utils.SystemError(enum.ErrorCodeUnauthorized, "company not found", nil)
-	}
-
-	// update company object
-	value := bson.M{
-		"$set": bson.M{
-			"name":                input.Name,
-			"clientDisplayName":   input.ClientDisplayName,
-			"supplierDisplayName": input.SupplierDisplayName,
-			"address":             input.Address,
-			"website":             input.Website,
-			"email":               input.Email,
-			"description":         input.Description,
-			"owner":               input.Owner,
-			"logo":                input.Logo,
-			"registrationNo":      input.RegistrationNo,
-			"contact":             input.Contact,
-			"termCondition":       input.TermCondition,
-			"isEnabled":           input.IsEnabled,
-			"updatedAt":           time.Now(),
-			"updatedBy":           systemContext.User.ID,
-		},
-	}
-
-	_, err := collection.UpdateOne(context.Background(), filter, value)
-
-	if err != nil {
-		return nil, utils.SystemError(enum.ErrorCodeInternal, "failed to update company", err.Error())
-	}
-
-	// return company
-	_ = collection.FindOne(context.Background(), filter).Decode(&doc)
-
-	return &doc, nil
-}
-
-func CompanyAdminList(input model.CompanyListRequest, systemContext *model.SystemContext) (*model.CompanyListResponse, error) {
-	collection := systemContext.MongoDB.Collection("company")
-
-	// Build base filter - admin can see all companies
-	filter := bson.M{"isDeleted": false}
-
-	// Add field-specific filters
-	if strings.TrimSpace(input.Name) != "" {
-		filter["name"] = primitive.Regex{Pattern: input.Name, Options: "i"}
-	}
-	if strings.TrimSpace(input.ClientDisplayName) != "" {
-		filter["clientDisplayName"] = primitive.Regex{Pattern: input.ClientDisplayName, Options: "i"}
-	}
-	if strings.TrimSpace(input.SupplierDisplayName) != "" {
-		filter["supplierDisplayName"] = primitive.Regex{Pattern: input.SupplierDisplayName, Options: "i"}
-	}
-	if strings.TrimSpace(input.Address) != "" {
-		filter["address"] = primitive.Regex{Pattern: input.Address, Options: "i"}
-	}
-	if strings.TrimSpace(input.Website) != "" {
-		filter["website"] = primitive.Regex{Pattern: input.Website, Options: "i"}
-	}
-	if strings.TrimSpace(input.Contact) != "" {
-		filter["contact"] = primitive.Regex{Pattern: input.Contact, Options: "i"}
-	}
-	if strings.TrimSpace(input.Owner) != "" {
-		if ownerID, err := primitive.ObjectIDFromHex(input.Owner); err == nil {
-			filter["owner"] = ownerID
-		}
-	}
-	if input.IsEnabled != nil {
-		filter["isEnabled"] = *input.IsEnabled
-	}
-
-	// Add global search filter
-	if strings.TrimSpace(input.Search) != "" {
-		searchRegex := primitive.Regex{Pattern: input.Search, Options: "i"}
-		searchFilter := bson.M{
-			"$or": []bson.M{
-				{"name": searchRegex},
-				{"clientDisplayName": searchRegex},
-				{"supplierDisplayName": searchRegex},
-				{"address": searchRegex},
-				{"website": searchRegex},
-				{"contact": searchRegex},
-			},
-		}
-
-		// Combine existing filter with search filter
-		if len(filter) > 1 { // More than just isDeleted
-			filter = bson.M{
-				"$and": []bson.M{
-					filter,
-					searchFilter,
-				},
-			}
-		} else {
-			filter["$or"] = searchFilter["$or"]
-		}
-	}
-
-	return executeCompanyList(collection, filter, input, systemContext)
 }
 
 // shared service
