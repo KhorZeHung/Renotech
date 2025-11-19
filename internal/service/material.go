@@ -354,6 +354,7 @@ func MaterialTenantUpdate(input *database.Material, systemContext *model.SystemC
 			"quotationConfig": input.QuotationConfig,
 			"orderConfig":     input.OrderConfig,
 			"template":        input.Template,
+			"supplier":        input.Supplier,
 			"type":            input.Type,
 			"brand":           input.Brand,
 			"unit":            input.Unit,
